@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Manrope', system-ui, -apple-system, sans-serif;
+    background-color: #FAFCF8;
+    color: #17231D;
+  }
+}
+
+.font-sanskrit {
+  font-family: 'Tiro Devanagari Sanskrit', serif;
+}
+
+.font-sans {
+  font-family: 'Manrope', system-ui, -apple-system, sans-serif;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #EEF3EC;
+}
+::-webkit-scrollbar-thumb {
+  background: #D6E0D3;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #7F8E85;
+}
