@@ -601,6 +601,79 @@ app.get('/api/v1/languages', (_req: Request, res: Response) => {
   });
 });
 
+// 9b. Peacock Feather Theme Palettes (Raadha Mode & Krishna Mode & System Mode)
+app.get('/api/v1/theme', (_req: Request, res: Response) => {
+  res.json({
+    title: 'Prakriti Peacock Feather Palette Architecture (मयूर पिच्छ रंग विधान)',
+    inspiration: 'Sacred Mor Pankh (मयूर पंख) adorned on Shri Krishna’s crown, celebrating divine harmony between Raadha (radiant daylight) and Krishna (iridescent celestial twilight).',
+    modes: {
+      radha: {
+        id: 'radha',
+        name: 'Raadha Mode',
+        hindiName: 'राधा भाव',
+        type: 'light',
+        concept: 'Peacock Feather in Morning Radiance (Daylight & Grace)',
+        palette: {
+          background: '#F6FAF7',
+          surface: '#FFFFFF',
+          surfaceSubtle: '#EDF5F1',
+          border: '#D2E3DB',
+          primary: '#097770', // Mayur Kanth (peacock throat turquoise/teal)
+          primaryHover: '#065A54',
+          chandrikaGold: '#C58F1B', // Golden eye of the feather
+          emeraldBarb: '#1A5F44', // Plume barbs
+          inkPrimary: '#0C1F1B', // Deep peacock quill ink
+          inkSecondary: '#3E564F',
+          inkMuted: '#6C837C',
+          accentGlow: 'rgba(9, 119, 112, 0.12)',
+        },
+        anatomy: {
+          chandrika: 'Golden Amber feather eye for Giving score arcs, milestones, and sun-warmth',
+          kanth: 'Luminous teal/turquoise for primary interactions and navigation',
+          barbs: 'Forest emerald for ecological acts, tulsi care, and compost rhythms',
+          danda: 'Soft quill parchment for backgrounds and cards',
+        },
+      },
+      krishna: {
+        id: 'krishna',
+        name: 'Krishna Mode',
+        alias: 'Krisha Mode',
+        hindiName: 'कृष्ण रूप / श्याम वर्ण',
+        type: 'dark',
+        concept: 'Iridescent Peacock Plumes in Celestial Midnight (Shyam Night)',
+        palette: {
+          background: '#07131B', // Deep celestial peacock midnight
+          surface: '#0D212E', // Midnight velvet peacock
+          surfaceSubtle: '#142C3C',
+          border: '#1B3E52',
+          primary: '#00DFB6', // Radiant iridescent peacock cyan/teal
+          primaryHover: '#00C29F',
+          chandrikaGold: '#FFB800', // Luminous divine golden chandrika eye
+          emeraldBarb: '#10B981', // Glowing feather emerald
+          inkPrimary: '#EEF9F6', // Luminous feather fluff white
+          inkSecondary: '#9BC3B9',
+          inkMuted: '#5E857C',
+          accentGlow: 'rgba(0, 223, 182, 0.18)',
+        },
+        anatomy: {
+          chandrika: 'Vibrant molten gold eye for high-contrast nighttime score arcs & badges',
+          kanth: 'Electric cyan/teal glow reminiscent of iridescent peacock neck',
+          barbs: 'Vivid emerald highlights for eco-streaks and living biodiversity',
+          danda: 'Midnight sapphire-indigo velvet for comfortable dark mode reading',
+        },
+      },
+      system: {
+        id: 'system',
+        name: 'System Mode',
+        hindiName: 'प्रणाली अनुसार (ऋतुचर्या)',
+        type: 'auto',
+        concept: 'Dynamic Circadian Alignment (Matches OS preference & Solar Rhythms)',
+        description: 'Auto-adapts between Raadha Mode (Light) during daylight and Krishna Mode (Dark) during twilight/night, syncing with window.matchMedia and user device settings.',
+      },
+    },
+  });
+});
+
 // 10. Flutter Project Codebase Explorer & ZIP Downloader
 // Recursively collects all files from /flutter_prakriti
 function getFilesRecursively(dir: string, baseDir: string = dir): { path: string; name: string; size: number }[] {

@@ -40,7 +40,10 @@ class _PrakritiAppState extends State<PrakritiApp> {
     return MaterialApp(
       title: 'Prakriti',
       debugShowCheckedModeBanner: false,
-      theme: PrakritiTheme.lightTheme,
+      // Peacock Feather Palettes: Raadha Mode (Light) & Krishna Mode (Dark)
+      theme: PrakritiTheme.radhaTheme,
+      darkTheme: PrakritiTheme.krishnaTheme,
+      themeMode: ThemeMode.system, // Respects System Mode & diurnal rhythm
       home: _buildCurrentScreen(),
     );
   }

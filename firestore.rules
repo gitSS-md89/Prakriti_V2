@@ -1,0 +1,117 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Default-Deny Catch-All
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Validation Blueprint for userProfile
+    function isValidUserProfile(data, uid) {
+      return data.id == uid &&
+        (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 100)) &&
+        (!('email' in data) || (data.email is string && data.email.size() <= 120)) &&
+        (!('selectedLanguage' in data) || (data.selectedLanguage is string && data.selectedLanguage.size() <= 10)) &&
+        (!('themeMode' in data) || (data.themeMode in ['radha', 'krishna', 'system']));
+    }
+
+    // Validation Blueprint for ecoScore
+    function isValidEcoScore(data, uid) {
+      return data.userId == uid &&
+        data.givingScore is number && data.givingScore >= 0 && data.givingScore <= 54 &&
+        data.lightnessScore is number && data.lightnessScore >= 0 && data.lightnessScore <= 54 &&
+        data.totalScore108 is number && data.totalScore108 >= 0 && data.totalScore108 <= 108 &&
+        data.date is string && data.date.size() <= 10;
+    }
+
+    // Validation Blueprint for ecoHabit
+    function isValidHabit(data, uid) {
+      return data.userId == uid &&
+        data.title is string && data.title.size() > 0 && data.title.size() <= 120 &&
+        (!('hindiTitle' in data) || (data.hindiTitle is string && data.hindiTitle.size() <= 120)) &&
+        data.category in ['sacred-flora', 'soil-waste', 'water', 'energy', 'creatures', 'zero-waste'] &&
+        (!('frequency' in data) || (data.frequency is string && data.frequency.size() <= 50)) &&
+        data.streak is number && data.streak >= 0 &&
+        data.completedToday is bool &&
+        data.pts is number && data.pts >= 0 && data.pts <= 54 &&
+        (!('ecoImpact' in data) || (data.ecoImpact is string && data.ecoImpact.size() <= 250));
+    }
+
+    // Validation Blueprint for actLog
+    function isValidActLog(data, uid) {
+      return data.userId == uid &&
+        data.name is string && data.name.size() > 0 && data.name.size() <= 160 &&
+        data.pts is number && data.pts >= 0 && data.pts <= 54;
+    }
+
+    // Users Collection & Subcollections
+    match /users/{userId} {
+      allow get: if isOwner(userId) && isValidId(userId);
+      allow create: if isOwner(userId) && isValidId(userId) &&
+        isValidUserProfile(incoming(), userId) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isOwner(userId) && isValidId(userId) &&
+        isValidUserProfile(incoming(), userId) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+      allow delete: if isOwner(userId) && isValidId(userId);
+
+      // Eco Scores Subcollection
+      match /scores/{scoreId} {
+        allow get, list: if isOwner(userId) && isValidId(userId);
+        allow create: if isOwner(userId) && isValidId(userId) && isValidId(scoreId) &&
+          isValidEcoScore(incoming(), userId) &&
+          incoming().updatedAt == request.time;
+        allow update: if isOwner(userId) && isValidId(userId) && isValidId(scoreId) &&
+          isValidEcoScore(incoming(), userId) &&
+          incoming().userId == existing().userId &&
+          incoming().updatedAt == request.time;
+        allow delete: if isOwner(userId) && isValidId(userId) && isValidId(scoreId);
+      }
+
+      // Eco Habits Subcollection
+      match /habits/{habitId} {
+        allow get, list: if isOwner(userId) && isValidId(userId);
+        allow create: if isOwner(userId) && isValidId(userId) && isValidId(habitId) &&
+          isValidHabit(incoming(), userId) &&
+          incoming().updatedAt == request.time;
+        allow update: if isOwner(userId) && isValidId(userId) && isValidId(habitId) &&
+          isValidHabit(incoming(), userId) &&
+          incoming().userId == existing().userId &&
+          incoming().updatedAt == request.time;
+        allow delete: if isOwner(userId) && isValidId(userId) && isValidId(habitId);
+      }
+
+      // Acts Subcollection
+      match /acts/{actId} {
+        allow get, list: if isOwner(userId) && isValidId(userId);
+        allow create: if isOwner(userId) && isValidId(userId) && isValidId(actId) &&
+          isValidActLog(incoming(), userId) &&
+          incoming().createdAt == request.time;
+        allow delete: if isOwner(userId) && isValidId(userId) && isValidId(actId);
+      }
+    }
+  }
+}

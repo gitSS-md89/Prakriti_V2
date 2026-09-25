@@ -32,10 +32,94 @@ import {
   Flame,
   Award,
   RotateCcw,
+  Sun,
+  Moon,
+  Monitor,
+  Palette,
+  Eye,
+  Cloud,
+  LogIn,
+  LogOut,
+  User as UserIcon,
 } from 'lucide-react';
+import {
+  auth,
+  db,
+  testConnection,
+  loginWithGoogle,
+  loginAsGuest,
+  logoutUser,
+  handleFirestoreError,
+  OperationType,
+} from './firebase';
+import { doc, setDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { onAuthStateChanged, type User } from 'firebase/auth';
+import { Sacred108Graph } from './components/Sacred108Graph';
+import { PrincipleOf108Modal } from './components/PrincipleOf108Modal';
 
-// Design tokens from DESIGN.md
-// Leaf #1F5E3B, Haldi #E3A018, Moss #7A9A45, Soil #6B4431, Mist #EEF3EC, Paper #FAFCF8, Ink #17231D
+// Peacock Feather (मयूर पंख) Design System Tokens:
+// Raadha Mode (Light Mode - Morning Feather Radiance / राधा भाव)
+// Krishna Mode (Dark Mode - Iridescent Midnight Plumes / कृष्ण रूप / श्याम वर्ण)
+// System Mode (Auto - Circadian Solar Cycle & Device Sync / प्रणाली अनुसार)
+
+export type ThemeMode = 'radha' | 'krishna' | 'system';
+
+export interface PeacockColorDef {
+  name: string;
+  hindiName: string;
+  alias?: string;
+  concept: string;
+  bg: string;
+  surface: string;
+  surfaceRaised: string;
+  border: string;
+  kanthTeal: string; // Peacock Throat Cyan/Teal
+  chandrikaGold: string; // Peacock Feather Eye Amber/Gold
+  emeraldBarb: string; // Plume Barbs Emerald
+  ink: string; // Primary Ink
+  inkSoft: string; // Secondary Ink
+  inkFaint: string; // Muted/Captions
+  pillBg: string;
+  glow: string;
+}
+
+export const PEACOCK_PALETTES: Record<'radha' | 'krishna', PeacockColorDef> = {
+  radha: {
+    name: 'Raadha Mode',
+    hindiName: 'राधा भाव',
+    concept: 'Morning Feather Radiance (Daylight Grace & Sacred Flora)',
+    bg: '#F6FAF7', // Soft silk parchment
+    surface: '#FFFFFF', // Clean feather quill white
+    surfaceRaised: '#EDF5F1',
+    border: '#D2E3DB',
+    kanthTeal: '#097770', // Mayur Kanth (rich teal/turquoise)
+    chandrikaGold: '#C58F1B', // Golden eye of peacock feather
+    emeraldBarb: '#1A5F44', // Plume filaments
+    ink: '#0C1F1B', // Deep peacock ink
+    inkSoft: '#3E564F',
+    inkFaint: '#6C837C',
+    pillBg: '#E7F2EC',
+    glow: 'rgba(9, 119, 112, 0.15)',
+  },
+  krishna: {
+    name: 'Krishna Mode',
+    alias: 'Krisha Mode',
+    hindiName: 'कृष्ण रूप / श्याम वर्ण',
+    concept: 'Iridescent Midnight Plumes (Celestial Twilight of Shyam)',
+    bg: '#07131B', // Deep celestial peacock midnight
+    surface: '#0D212E', // Midnight velvet peacock card
+    surfaceRaised: '#142C3C',
+    border: '#1B3E52',
+    kanthTeal: '#00DFB6', // Glowing iridescent peacock cyan/teal
+    chandrikaGold: '#FFB800', // Luminous divine gold eye ring
+    emeraldBarb: '#10B981', // Vivid glowing emerald plume
+    ink: '#EEF9F6', // Luminous feather fluff white
+    inkSoft: '#9BC3B9',
+    inkFaint: '#5E857C',
+    pillBg: '#122D3D',
+    glow: 'rgba(0, 223, 182, 0.25)',
+  },
+};
 
 interface EcoHabit {
   id: string;
@@ -86,6 +170,125 @@ export default function App() {
   const [showSellerOnboarding, setShowSellerOnboarding] = useState<boolean>(false);
   const [showPrivacyScreen, setShowPrivacyScreen] = useState<boolean>(false);
   const [showWisdomScreen, setShowWisdomScreen] = useState<boolean>(false);
+  const [showPrincipleModal, setShowPrincipleModal] = useState<boolean>(false);
+
+  // Firebase Real-time State & Synchronization
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [firebaseConnected, setFirebaseConnected] = useState<boolean>(true);
+  const [isSyncingScore, setIsSyncingScore] = useState<boolean>(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  // Initialize Firebase Connection & Auth Listener
+  useEffect(() => {
+    testConnection().then((ok) => setFirebaseConnected(ok));
+
+    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        setCurrentUser(user);
+      } else {
+        try {
+          const guest = await loginAsGuest();
+          setCurrentUser(guest);
+        } catch (err) {
+          console.warn('Anonymous sign-in error:', err);
+        }
+      }
+    });
+
+    return () => unsubscribeAuth();
+  }, []);
+
+  // Listen for real-time 108 Score updates from Firestore
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const scoreDocRef = doc(db, 'users', currentUser.uid, 'scores', 'today');
+    const unsubscribeSnapshot = onSnapshot(
+      scoreDocRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          if (typeof data.givingScore === 'number') {
+            setGivingScore(data.givingScore);
+          }
+          if (typeof data.lightnessScore === 'number') {
+            setLightnessScore(data.lightnessScore);
+          }
+        } else {
+          // Initialize user score in Firestore
+          setDoc(scoreDocRef, {
+            userId: currentUser.uid,
+            givingScore: 38,
+            lightnessScore: 33,
+            totalScore108: 71,
+            date: new Date().toISOString().split('T')[0],
+            updatedAt: serverTimestamp(),
+          }).catch((err) =>
+            handleFirestoreError(err, OperationType.WRITE, `users/${currentUser.uid}/scores/today`)
+          );
+        }
+      },
+      (error) => {
+        console.warn('Score onSnapshot notice:', error.message);
+      }
+    );
+
+    return () => unsubscribeSnapshot();
+  }, [currentUser]);
+
+  // Persistent Score Updater to Firestore
+  const saveScoresToFirebase = async (newGiving: number, newLightness: number) => {
+    const clampedGiving = Math.max(0, Math.min(54, newGiving));
+    const clampedLightness = Math.max(0, Math.min(54, newLightness));
+    setGivingScore(clampedGiving);
+    setLightnessScore(clampedLightness);
+
+    if (!currentUser) return;
+    try {
+      setIsSyncingScore(true);
+      const scoreDocRef = doc(db, 'users', currentUser.uid, 'scores', 'today');
+      await setDoc(
+        scoreDocRef,
+        {
+          userId: currentUser.uid,
+          givingScore: clampedGiving,
+          lightnessScore: clampedLightness,
+          totalScore108: clampedGiving + clampedLightness,
+          date: new Date().toISOString().split('T')[0],
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `users/${currentUser.uid}/scores/today`);
+    } finally {
+      setIsSyncingScore(false);
+    }
+  };
+
+  // Peacock Feather Theme Modes: Raadha Mode (Light), Krishna Mode (Dark), System Mode (Auto)
+  const [themeMode, setThemeMode] = useState<ThemeMode>('system');
+  const [systemPrefersDark, setSystemPrefersDark] = useState<boolean>(() => {
+    if (typeof window !== 'undefined' && window.matchMedia) {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    }
+    return false;
+  });
+  const [simulatedSystemDark, setSimulatedSystemDark] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handler = (e: MediaQueryListEvent) => setSystemPrefersDark(e.matches);
+    mediaQuery.addEventListener('change', handler);
+    return () => mediaQuery.removeEventListener('change', handler);
+  }, []);
+
+  const activeSystemIsDark = simulatedSystemDark !== null ? simulatedSystemDark : systemPrefersDark;
+  const effectiveTheme: 'radha' | 'krishna' =
+    themeMode === 'system' ? (activeSystemIsDark ? 'krishna' : 'radha') : themeMode;
+  const isKrishna = effectiveTheme === 'krishna';
+  const currentPalette = PEACOCK_PALETTES[effectiveTheme];
 
   // Habits State & Streaks
   const [habits, setHabits] = useState<EcoHabit[]>([
@@ -191,10 +394,12 @@ export default function App() {
           if (nextCompleted) {
             setCelebratingHabitId(id);
             setTimeout(() => setCelebratingHabitId(null), 2500);
-            setGivingScore((g) => Math.min(54, g + h.pts));
+            const nextGiving = Math.min(54, givingScore + h.pts);
+            saveScoresToFirebase(nextGiving, lightnessScore);
             speakText(`${h.title} completed. Streak is now ${newStreak} days.`);
           } else {
-            setGivingScore((g) => Math.max(0, g - h.pts));
+            const nextGiving = Math.max(0, givingScore - h.pts);
+            saveScoresToFirebase(nextGiving, lightnessScore);
           }
 
           return {
@@ -411,14 +616,24 @@ export default function App() {
   const totalScore108 = Math.min(54, givingScore) + Math.min(54, lightnessScore);
 
   return (
-    <div className="min-h-screen bg-[#FAFCF8] text-[#17231D] flex flex-col font-sans selection:bg-[#E3EBD6] selection:text-[#1F5E3B]">
+    <div
+      className={`min-h-screen ${
+        isKrishna ? 'bg-[#07131B] text-[#EEF9F6]' : 'bg-[#F6FAF7] text-[#0C1F1B]'
+      } transition-colors duration-300 flex flex-col font-sans selection:bg-[#00DFB6]/30 selection:text-white`}
+    >
       {/* ----------------------------------------------------
           TOP BAR CONTRACT (Exact 3-Zone Architecture)
           Zone 1: Single text element wordmark
           Zone 2: Clean 4-6 text navigation links
-          Zone 3: Primary action button + Language selector
+          Zone 3: Peacock Theme Switcher + Language + Action
       ---------------------------------------------------- */}
-      <header className="sticky top-0 z-50 bg-[#FAFCF8]/95 backdrop-blur-md border-b border-[#D6E0D3] px-6 py-3.5 flex items-center justify-between">
+      <header
+        className={`sticky top-0 z-50 ${
+          isKrishna
+            ? 'bg-[#07131B]/95 border-[#1B3E52] text-[#EEF9F6]'
+            : 'bg-[#F6FAF7]/95 border-[#D2E3DB] text-[#0C1F1B]'
+        } backdrop-blur-md border-b px-6 py-3.5 flex items-center justify-between transition-colors duration-300`}
+      >
         {/* Zone 1: Brand Wordmark */}
         <div className="flex items-center gap-2">
           <a
@@ -427,24 +642,44 @@ export default function App() {
               e.preventDefault();
               setActiveView('simulator');
             }}
-            className="text-xl font-bold tracking-tight text-[#17231D] flex items-center gap-2"
+            className={`text-xl font-bold tracking-tight ${
+              isKrishna ? 'text-[#EEF9F6]' : 'text-[#0C1F1B]'
+            } flex items-center gap-2`}
           >
-            <span className="w-8 h-8 rounded-lg bg-[#1F5E3B] text-white flex items-center justify-center font-sanskrit text-lg shadow-sm">
+            <span
+              className={`w-8 h-8 rounded-lg ${
+                isKrishna ? 'bg-[#00DFB6] text-[#07131B]' : 'bg-[#097770] text-white'
+              } flex items-center justify-center font-sanskrit text-lg font-black shadow-sm transition-colors`}
+            >
               प्र
             </span>
             <span>Prakriti</span>
           </a>
-          <span className="hidden sm:inline-block text-xs text-[#7F8E85] font-sanskrit">
+          <span
+            className={`hidden sm:inline-block text-xs font-sanskrit ${
+              isKrishna ? 'text-[#9BC3B9]' : 'text-[#6C837C]'
+            }`}
+          >
             · जीवो परमो धर्मः
           </span>
         </div>
 
         {/* Zone 2: Navigation Links */}
-        <nav className="hidden lg:flex items-center gap-7 text-sm font-medium text-[#4A5A51]">
+        <nav
+          className={`hidden lg:flex items-center gap-7 text-sm font-medium ${
+            isKrishna ? 'text-[#9BC3B9]' : 'text-[#3E564F]'
+          }`}
+        >
           <button
             onClick={() => setActiveView('simulator')}
             className={`transition-colors flex items-center gap-1.5 ${
-              activeView === 'simulator' ? 'text-[#1F5E3B] font-semibold' : 'hover:text-[#17231D]'
+              activeView === 'simulator'
+                ? isKrishna
+                  ? 'text-[#00DFB6] font-semibold'
+                  : 'text-[#097770] font-semibold'
+                : isKrishna
+                ? 'hover:text-[#EEF9F6]'
+                : 'hover:text-[#0C1F1B]'
             }`}
           >
             <Smartphone className="w-4 h-4" />
@@ -454,17 +689,29 @@ export default function App() {
           <button
             onClick={() => setActiveView('ai-studio')}
             className={`transition-colors flex items-center gap-1.5 ${
-              activeView === 'ai-studio' ? 'text-[#1F5E3B] font-semibold' : 'hover:text-[#17231D]'
+              activeView === 'ai-studio'
+                ? isKrishna
+                  ? 'text-[#00DFB6] font-semibold'
+                  : 'text-[#097770] font-semibold'
+                : isKrishna
+                ? 'hover:text-[#EEF9F6]'
+                : 'hover:text-[#0C1F1B]'
             }`}
           >
-            <Sparkles className="w-4 h-4 text-[#E3A018]" />
+            <Sparkles className="w-4 h-4 text-[#FFB800]" />
             <span>Gemini AI Studio</span>
           </button>
 
           <button
             onClick={() => setActiveView('codebase')}
             className={`transition-colors flex items-center gap-1.5 ${
-              activeView === 'codebase' ? 'text-[#1F5E3B] font-semibold' : 'hover:text-[#17231D]'
+              activeView === 'codebase'
+                ? isKrishna
+                  ? 'text-[#00DFB6] font-semibold'
+                  : 'text-[#097770] font-semibold'
+                : isKrishna
+                ? 'hover:text-[#EEF9F6]'
+                : 'hover:text-[#0C1F1B]'
             }`}
           >
             <Code2 className="w-4 h-4" />
@@ -474,7 +721,13 @@ export default function App() {
           <button
             onClick={() => setActiveView('backend')}
             className={`transition-colors flex items-center gap-1.5 ${
-              activeView === 'backend' ? 'text-[#1F5E3B] font-semibold' : 'hover:text-[#17231D]'
+              activeView === 'backend'
+                ? isKrishna
+                  ? 'text-[#00DFB6] font-semibold'
+                  : 'text-[#097770] font-semibold'
+                : isKrishna
+                ? 'hover:text-[#EEF9F6]'
+                : 'hover:text-[#0C1F1B]'
             }`}
           >
             <Database className="w-4 h-4" />
@@ -484,7 +737,13 @@ export default function App() {
           <button
             onClick={() => setActiveView('architecture')}
             className={`transition-colors flex items-center gap-1.5 ${
-              activeView === 'architecture' ? 'text-[#1F5E3B] font-semibold' : 'hover:text-[#17231D]'
+              activeView === 'architecture'
+                ? isKrishna
+                  ? 'text-[#00DFB6] font-semibold'
+                  : 'text-[#097770] font-semibold'
+                : isKrishna
+                ? 'hover:text-[#EEF9F6]'
+                : 'hover:text-[#0C1F1B]'
             }`}
           >
             <BookOpen className="w-4 h-4" />
@@ -492,8 +751,77 @@ export default function App() {
           </button>
         </nav>
 
-        {/* Zone 3: Actions & Quick Switcher */}
-        <div className="flex items-center gap-3">
+        {/* Zone 3: Actions & Peacock Theme Switcher */}
+        <div className="flex items-center gap-2.5">
+          {/* Peacock Feather Theme Switcher */}
+          <div
+            className={`flex items-center p-1 rounded-xl border ${
+              isKrishna
+                ? 'bg-[#0D212E] border-[#1B3E52]'
+                : 'bg-white border-[#D2E3DB]'
+            } shadow-xs`}
+            title="Peacock Feather Theme: Raadha Mode (Light) / Krishna Mode (Dark) / System Mode (Auto)"
+          >
+            <button
+              onClick={() => {
+                setThemeMode('radha');
+                setSimulatedSystemDark(null);
+                speakText('Raadha Mode activated. Morning peacock feather radiance.');
+              }}
+              className={`px-2 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                themeMode === 'radha'
+                  ? 'bg-[#C58F1B] text-white shadow-xs'
+                  : isKrishna
+                  ? 'text-[#9BC3B9] hover:text-white'
+                  : 'text-[#3E564F] hover:text-[#0C1F1B]'
+              }`}
+              title="Raadha Mode (Light Mode - Morning Feather Radiance)"
+            >
+              <Sun className="w-3.5 h-3.5 text-[#FFD166]" />
+              <span className="hidden sm:inline">Raadha</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setThemeMode('krishna');
+                setSimulatedSystemDark(null);
+                speakText('Krishna Mode activated. Iridescent peacock plumes in midnight celestial twilight.');
+              }}
+              className={`px-2 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                themeMode === 'krishna'
+                  ? 'bg-[#00DFB6] text-[#07131B] shadow-xs'
+                  : isKrishna
+                  ? 'text-[#9BC3B9] hover:text-white'
+                  : 'text-[#3E564F] hover:text-[#0C1F1B]'
+              }`}
+              title="Krishna Mode / Krisha Mode (Dark Mode - Iridescent Midnight Plumes)"
+            >
+              <Moon className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Krishna</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setThemeMode('system');
+                setSimulatedSystemDark(null);
+                speakText('System Mode activated. Synchronizing with circadian daylight and OS theme.');
+              }}
+              className={`px-2 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                themeMode === 'system'
+                  ? isKrishna
+                    ? 'bg-[#183D52] text-[#00DFB6] border border-[#00DFB6]/40'
+                    : 'bg-[#EDF5F1] text-[#097770] border border-[#097770]/40'
+                  : isKrishna
+                  ? 'text-[#9BC3B9] hover:text-white'
+                  : 'text-[#3E564F] hover:text-[#0C1F1B]'
+              }`}
+              title="System Mode (Auto - Circadian Solar Cycle & Device Sync)"
+            >
+              <Monitor className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">System</span>
+            </button>
+          </div>
+
           {/* 12-Language Selector */}
           <div className="relative">
             <select
@@ -503,25 +831,105 @@ export default function App() {
                 const l = LANGUAGES.find((x) => x.code === e.target.value);
                 if (l) speakText(`Prakriti language switched to ${l.native}`);
               }}
-              className="bg-white border border-[#D6E0D3] rounded-lg px-2.5 py-1.5 text-xs font-semibold text-[#17231D] focus:outline-none focus:border-[#1F5E3B] cursor-pointer"
+              className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none cursor-pointer border ${
+                isKrishna
+                  ? 'bg-[#0D212E] border-[#1B3E52] text-[#EEF9F6]'
+                  : 'bg-white border-[#D2E3DB] text-[#0C1F1B]'
+              }`}
             >
               {LANGUAGES.map((l) => (
-                <option key={l.code} value={l.code}>
+                <option key={l.code} value={l.code} className={isKrishna ? 'bg-[#0D212E]' : ''}>
                   {l.native} ({l.name})
                 </option>
               ))}
             </select>
           </div>
 
+          {/* Principle of 108 Sacred Button */}
+          <button
+            onClick={() => setShowPrincipleModal(true)}
+            className={`px-2.5 py-1.5 text-xs font-bold rounded-lg border transition-all shadow-xs flex items-center gap-1.5 whitespace-nowrap ${
+              isKrishna
+                ? 'bg-[#102B3C] border-[#00DFB6]/40 text-[#00DFB6] hover:bg-[#15364C]'
+                : 'bg-[#EDF5F1] border-[#097770]/30 text-[#097770] hover:bg-[#DCEEE5]'
+            }`}
+            title="Read the Sacred Principle of 108 (1 · 0 · ∞)"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-[#FFB800]" />
+            <span className="hidden md:inline">Principle of 108</span>
+          </button>
+
+          {/* Firebase Connection & Auth Status Badge */}
+          <div
+            className={`flex items-center gap-2 px-2.5 py-1 rounded-xl border text-xs ${
+              isKrishna ? 'bg-[#0D212E] border-[#1B3E52]' : 'bg-white border-[#D2E3DB]'
+            }`}
+          >
+            <div className="flex items-center gap-1.5" title="Firebase Firestore: Connected (startup-rig-5mn89)">
+              <div
+                className={`w-2 h-2 rounded-full ${
+                  firebaseConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
+                }`}
+              />
+              <span className={`text-[10px] font-mono hidden xl:inline ${isKrishna ? 'text-[#9BC3B9]' : 'text-[#6C837C]'}`}>
+                {isSyncingScore ? 'Syncing...' : 'Firestore'}
+              </span>
+            </div>
+
+            {currentUser && !currentUser.isAnonymous ? (
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-semibold max-w-[100px] truncate">
+                  {currentUser.displayName || currentUser.email?.split('@')[0]}
+                </span>
+                <button
+                  onClick={async () => {
+                    await logoutUser();
+                    loginAsGuest().then(setCurrentUser);
+                  }}
+                  className={`p-1 rounded hover:bg-black/10 transition-colors ${
+                    isKrishna ? 'text-[#9BC3B9]' : 'text-[#6C837C]'
+                  }`}
+                  title="Sign Out"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={async () => {
+                  try {
+                    const u = await loginWithGoogle();
+                    if (u) setCurrentUser(u);
+                  } catch (e: any) {
+                    setAuthError(e?.message || 'Login error');
+                  }
+                }}
+                className={`flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded transition-all ${
+                  isKrishna
+                    ? 'bg-[#00DFB6]/20 text-[#00DFB6] hover:bg-[#00DFB6]/30'
+                    : 'bg-[#097770]/15 text-[#097770] hover:bg-[#097770]/25'
+                }`}
+                title="Connect real Google Account"
+              >
+                <LogIn className="w-3 h-3" />
+                <span>Google Sign-In</span>
+              </button>
+            )}
+          </div>
+
           {/* 1-Click ZIP Download of full Flutter project */}
           <a
             href="/api/flutter-project/download-zip"
             download="prakriti_flutter_mobile_app.zip"
-            className="px-3.5 py-2 text-xs font-semibold text-white bg-[#1F5E3B] hover:bg-[#123A25] rounded-lg transition-all shadow-sm flex items-center gap-1.5 whitespace-nowrap active:scale-[0.98]"
+            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all shadow-sm flex items-center gap-1.5 whitespace-nowrap active:scale-[0.98] ${
+              isKrishna
+                ? 'bg-[#00DFB6] hover:bg-[#00C29F] text-[#07131B]'
+                : 'bg-[#097770] hover:bg-[#065A54] text-white'
+            }`}
             title="Download full runnable Flutter source folder (Android & iOS)"
           >
             <Download className="w-3.5 h-3.5" />
-            <span>Download Flutter Zip</span>
+            <span className="hidden md:inline">Download Flutter Zip</span>
           </a>
         </div>
       </header>
@@ -535,33 +943,366 @@ export default function App() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
             {/* Left Column: Context, Features, & Quick Controls */}
             <div className="lg:col-span-5 space-y-6">
-              <div className="bg-white rounded-2xl p-6 border border-[#D6E0D3]">
-                <div className="flex items-center justify-between text-xs text-[#7F8E85] mb-2">
+              {/* Peacock Feather Color Themes & Dedicated System Mode Section */}
+              <div
+                className={`rounded-2xl p-5 border transition-all duration-300 ${
+                  isKrishna
+                    ? 'bg-[#0D212E] border-[#1B3E52] text-[#EEF9F6] shadow-[0_0_30px_rgba(0,223,182,0.08)]'
+                    : 'bg-white border-[#D2E3DB] text-[#0C1F1B] shadow-xs'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={`w-7 h-7 rounded-lg flex items-center justify-center ${
+                        isKrishna ? 'bg-[#00DFB6]/20 text-[#00DFB6]' : 'bg-[#097770]/15 text-[#097770]'
+                      }`}
+                    >
+                      <Palette className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold leading-tight">
+                        Peacock Feather Themes (मयूर पिच्छ रंग विधान)
+                      </h3>
+                      <p className={`text-[10px] mt-0.5 ${isKrishna ? 'text-[#9BC3B9]' : 'text-[#6C837C]'}`}>
+                        Palette sourced directly from the sacred peacock feather (Mor Pankh)
+                      </p>
+                    </div>
+                  </div>
+                  <span
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      isKrishna
+                        ? 'bg-[#00DFB6]/15 text-[#00DFB6] border border-[#00DFB6]/30'
+                        : 'bg-[#C58F1B]/15 text-[#C58F1B] border border-[#C58F1B]/30'
+                    }`}
+                  >
+                    {isKrishna ? 'Krishna / श्याम' : 'Raadha / राधा'}
+                  </span>
+                </div>
+
+                {/* 3-Way Mode Pill Selector */}
+                <div
+                  className={`grid grid-cols-3 gap-1.5 p-1 rounded-xl border ${
+                    isKrishna ? 'bg-[#07131B] border-[#1B3E52]' : 'bg-[#EDF5F1] border-[#D2E3DB]'
+                  }`}
+                >
+                  <button
+                    onClick={() => {
+                      setThemeMode('radha');
+                      setSimulatedSystemDark(null);
+                      speakText('Switched to Raadha Mode.');
+                    }}
+                    className={`py-2 px-2 rounded-lg text-xs font-bold flex flex-col items-center gap-1 transition-all ${
+                      themeMode === 'radha'
+                        ? 'bg-[#C58F1B] text-white shadow-sm'
+                        : isKrishna
+                        ? 'text-[#9BC3B9] hover:text-white'
+                        : 'text-[#3E564F] hover:text-[#0C1F1B]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1">
+                      <Sun className="w-3.5 h-3.5 text-[#FFD166]" />
+                      <span>Raadha</span>
+                    </div>
+                    <span className="text-[9px] opacity-80 font-normal">Light Mode</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setThemeMode('krishna');
+                      setSimulatedSystemDark(null);
+                      speakText('Switched to Krishna Mode.');
+                    }}
+                    className={`py-2 px-2 rounded-lg text-xs font-bold flex flex-col items-center gap-1 transition-all ${
+                      themeMode === 'krishna'
+                        ? 'bg-[#00DFB6] text-[#07131B] shadow-sm'
+                        : isKrishna
+                        ? 'text-[#9BC3B9] hover:text-white'
+                        : 'text-[#3E564F] hover:text-[#0C1F1B]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1">
+                      <Moon className="w-3.5 h-3.5" />
+                      <span>Krishna</span>
+                    </div>
+                    <span className="text-[9px] opacity-80 font-normal">Dark Mode</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setThemeMode('system');
+                      setSimulatedSystemDark(null);
+                      speakText('Switched to System Mode.');
+                    }}
+                    className={`py-2 px-2 rounded-lg text-xs font-bold flex flex-col items-center gap-1 transition-all ${
+                      themeMode === 'system'
+                        ? isKrishna
+                          ? 'bg-[#183D52] text-[#00DFB6] border border-[#00DFB6]/40'
+                          : 'bg-white text-[#097770] border border-[#097770]/40 shadow-xs'
+                        : isKrishna
+                        ? 'text-[#9BC3B9] hover:text-white'
+                        : 'text-[#3E564F] hover:text-[#0C1F1B]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1">
+                      <Monitor className="w-3.5 h-3.5" />
+                      <span>System</span>
+                    </div>
+                    <span className="text-[9px] opacity-80 font-normal">Auto Cycle</span>
+                  </button>
+                </div>
+
+                {/* Peacock Feather Palette Swatches (Anatomy Breakdown) */}
+                <div className="mt-3.5 pt-3 border-t border-current/10 space-y-2">
+                  <div className="flex items-center justify-between text-[11px] font-bold">
+                    <span className="flex items-center gap-1">
+                      <Eye className="w-3.5 h-3.5 text-[#FFB800]" />
+                      <span>Peacock Feather Palette Anatomy</span>
+                    </span>
+                    <span className={`text-[10px] font-normal ${isKrishna ? 'text-[#9BC3B9]' : 'text-[#6C837C]'}`}>
+                      {effectiveTheme === 'krishna' ? 'Krishna Night Velvet' : 'Raadha Morning Radiance'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-2">
+                    {/* Swatch 1: Chandrika Gold */}
+                    <div
+                      className={`p-2 rounded-xl border text-center transition-all ${
+                        isKrishna ? 'bg-[#142C3C] border-[#1B3E52]' : 'bg-[#FAFCF8] border-[#D2E3DB]'
+                      }`}
+                    >
+                      <div
+                        className="w-full h-5 rounded-md mb-1.5 shadow-xs"
+                        style={{
+                          backgroundColor: isKrishna ? '#FFB800' : '#C58F1B',
+                        }}
+                      />
+                      <div className="text-[10px] font-bold leading-tight truncate">Chandrika</div>
+                      <div className={`text-[8px] font-mono mt-0.5 ${isKrishna ? 'text-[#FFB800]' : 'text-[#C58F1B]'}`}>
+                        {isKrishna ? '#FFB800' : '#C58F1B'}
+                      </div>
+                      <div className="text-[8px] opacity-75 mt-0.5 truncate">Feather Eye</div>
+                    </div>
+
+                    {/* Swatch 2: Mayur Kanth */}
+                    <div
+                      className={`p-2 rounded-xl border text-center transition-all ${
+                        isKrishna ? 'bg-[#142C3C] border-[#1B3E52]' : 'bg-[#FAFCF8] border-[#D2E3DB]'
+                      }`}
+                    >
+                      <div
+                        className="w-full h-5 rounded-md mb-1.5 shadow-xs"
+                        style={{
+                          backgroundColor: isKrishna ? '#00DFB6' : '#097770',
+                        }}
+                      />
+                      <div className="text-[10px] font-bold leading-tight truncate">Mayur Kanth</div>
+                      <div className={`text-[8px] font-mono mt-0.5 ${isKrishna ? 'text-[#00DFB6]' : 'text-[#097770]'}`}>
+                        {isKrishna ? '#00DFB6' : '#097770'}
+                      </div>
+                      <div className="text-[8px] opacity-75 mt-0.5 truncate">Throat Teal</div>
+                    </div>
+
+                    {/* Swatch 3: Pankh Plumes */}
+                    <div
+                      className={`p-2 rounded-xl border text-center transition-all ${
+                        isKrishna ? 'bg-[#142C3C] border-[#1B3E52]' : 'bg-[#FAFCF8] border-[#D2E3DB]'
+                      }`}
+                    >
+                      <div
+                        className="w-full h-5 rounded-md mb-1.5 shadow-xs"
+                        style={{
+                          backgroundColor: isKrishna ? '#10B981' : '#1A5F44',
+                        }}
+                      />
+                      <div className="text-[10px] font-bold leading-tight truncate">Plumes</div>
+                      <div className={`text-[8px] font-mono mt-0.5 ${isKrishna ? 'text-[#10B981]' : 'text-[#1A5F44]'}`}>
+                        {isKrishna ? '#10B981' : '#1A5F44'}
+                      </div>
+                      <div className="text-[8px] opacity-75 mt-0.5 truncate">Emerald Barbs</div>
+                    </div>
+
+                    {/* Swatch 4: Danda / Velvet Shaft */}
+                    <div
+                      className={`p-2 rounded-xl border text-center transition-all ${
+                        isKrishna ? 'bg-[#142C3C] border-[#1B3E52]' : 'bg-[#FAFCF8] border-[#D2E3DB]'
+                      }`}
+                    >
+                      <div
+                        className="w-full h-5 rounded-md mb-1.5 shadow-xs"
+                        style={{
+                          backgroundColor: isKrishna ? '#07131B' : '#F6FAF7',
+                          border: isKrishna ? '1px solid #1B3E52' : '1px solid #D2E3DB',
+                        }}
+                      />
+                      <div className="text-[10px] font-bold leading-tight truncate">Danda Shaft</div>
+                      <div className={`text-[8px] font-mono mt-0.5 ${isKrishna ? 'text-[#9BC3B9]' : 'text-[#6C837C]'}`}>
+                        {isKrishna ? '#07131B' : '#F6FAF7'}
+                      </div>
+                      <div className="text-[8px] opacity-75 mt-0.5 truncate">Velvet Base</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ----------------------------------------------------
+                    DEDICATED SECTION FOR SYSTEM MODE
+                    (Requirement: "Make section for system mode as well")
+                ---------------------------------------------------- */}
+                <div
+                  className={`mt-4 p-3.5 rounded-xl border transition-all ${
+                    themeMode === 'system'
+                      ? isKrishna
+                        ? 'bg-[#102B3C] border-[#00DFB6]/50 shadow-[0_0_20px_rgba(0,223,182,0.15)]'
+                        : 'bg-[#EDF5F1] border-[#097770]/40 shadow-xs'
+                      : isKrishna
+                      ? 'bg-[#07131B]/70 border-[#1B3E52]'
+                      : 'bg-[#FAFCF8] border-[#D2E3DB]'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <Monitor className={`w-4 h-4 ${isKrishna ? 'text-[#00DFB6]' : 'text-[#097770]'}`} />
+                      <span className="text-xs font-bold">
+                        System Mode Section (प्रणाली अनुसार)
+                      </span>
+                    </div>
+                    <span
+                      className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
+                        themeMode === 'system'
+                          ? isKrishna
+                            ? 'bg-[#00DFB6] text-[#07131B]'
+                            : 'bg-[#097770] text-white'
+                          : isKrishna
+                          ? 'bg-[#183D52] text-[#9BC3B9]'
+                          : 'bg-[#D2E3DB] text-[#3E564F]'
+                      }`}
+                    >
+                      {themeMode === 'system' ? '● Currently Managing Theme' : 'Inactive (Manual Override)'}
+                    </span>
+                  </div>
+
+                  <p className={`text-[11px] mt-2 leading-relaxed ${isKrishna ? 'text-[#9BC3B9]' : 'text-[#4A5A51]'}`}>
+                    System Mode honors the ancient Vedic principle of <strong>Ritucharya</strong> and diurnal
+                    synchronization. It connects to the client device’s <code className="font-mono text-[10px] bg-black/10 px-1 rounded">prefers-color-scheme</code> API
+                    to seamlessly flow from <strong>Raadha Mode</strong> (giving, sunlight, sacred greens) during the day,
+                    into <strong>Krishna Mode</strong> (iridescent night peacock indigo, star cooling, reflection) at dusk.
+                  </p>
+
+                  {/* System Diagnostics & Status Grid */}
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-[10px]">
+                    <div
+                      className={`p-2 rounded-lg border ${
+                        isKrishna ? 'bg-[#07131B] border-[#1B3E52]' : 'bg-white border-[#D2E3DB]'
+                      }`}
+                    >
+                      <span className={`block font-semibold ${isKrishna ? 'text-[#9BC3B9]' : 'text-[#6C837C]'}`}>
+                        Hardware OS Reports:
+                      </span>
+                      <span className="font-bold flex items-center gap-1 mt-0.5">
+                        {systemPrefersDark ? (
+                          <>
+                            <Moon className="w-3 h-3 text-[#00DFB6]" /> Dark Preference
+                          </>
+                        ) : (
+                          <>
+                            <Sun className="w-3 h-3 text-[#FFB800]" /> Light Preference
+                          </>
+                        )}
+                      </span>
+                    </div>
+
+                    <div
+                      className={`p-2 rounded-lg border ${
+                        isKrishna ? 'bg-[#07131B] border-[#1B3E52]' : 'bg-white border-[#D2E3DB]'
+                      }`}
+                    >
+                      <span className={`block font-semibold ${isKrishna ? 'text-[#9BC3B9]' : 'text-[#6C837C]'}`}>
+                        Active Render Target:
+                      </span>
+                      <span
+                        className={`font-bold flex items-center gap-1 mt-0.5 ${
+                          effectiveTheme === 'krishna' ? 'text-[#00DFB6]' : 'text-[#097770]'
+                        }`}
+                      >
+                        {effectiveTheme === 'krishna' ? '🦚 Krishna Mode (Dark)' : '🪶 Raadha Mode (Light)'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Interactive Testing Controls for System Mode */}
+                  <div className="mt-3 pt-2.5 border-t border-current/10 flex flex-wrap items-center justify-between gap-2">
+                    <button
+                      onClick={() => {
+                        setThemeMode('system');
+                        setSimulatedSystemDark((prev) => (prev !== null ? !prev : !systemPrefersDark));
+                        speakText('Simulating OS diurnal day/night transition in System Mode.');
+                      }}
+                      className={`py-1.5 px-3 rounded-lg text-[10px] font-bold transition-all flex items-center gap-1.5 ${
+                        isKrishna
+                          ? 'bg-[#00DFB6] hover:bg-[#00C29F] text-[#07131B]'
+                          : 'bg-[#097770] hover:bg-[#065A54] text-white'
+                      }`}
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      <span>
+                        Simulate OS {activeSystemIsDark ? 'Daytime (Raadha)' : 'Nighttime (Krishna)'} Shift
+                      </span>
+                    </button>
+
+                    {simulatedSystemDark !== null && (
+                      <button
+                        onClick={() => {
+                          setSimulatedSystemDark(null);
+                          speakText('Reset back to live hardware device sensor.');
+                        }}
+                        className={`text-[10px] underline font-semibold ${
+                          isKrishna ? 'text-[#FFB800]' : 'text-[#C58F1B]'
+                        }`}
+                      >
+                        Reset to Real Hardware Sensor
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div
+                className={`rounded-2xl p-6 border transition-all ${
+                  isKrishna
+                    ? 'bg-[#0D212E] border-[#1B3E52] text-[#EEF9F6]'
+                    : 'bg-white border-[#D2E3DB] text-[#0C1F1B]'
+                }`}
+              >
+                <div className={`flex items-center justify-between text-xs mb-2 ${isKrishna ? 'text-[#9BC3B9]' : 'text-[#7F8E85]'}`}>
                   <span>Flutter 3.24 · Android & iOS</span>
                   <span>·</span>
                   <span>108 Double Arc</span>
                   <span>·</span>
                   <span>12 Spoken Languages</span>
                 </div>
-                <h2 className="text-2xl font-bold text-[#17231D] tracking-tight">
+                <h2 className="text-2xl font-bold tracking-tight">
                   Prakriti Mobile Simulator
                 </h2>
-                <p className="text-sm text-[#4A5A51] mt-2 leading-relaxed">
+                <p className={`text-sm mt-2 leading-relaxed ${isKrishna ? 'text-[#9BC3B9]' : 'text-[#4A5A51]'}`}>
                   Interact with the real mobile app below. It enforces{' '}
-                  <strong className="text-[#1F5E3B]">giving leads</strong>, never scolds,
+                  <strong className={isKrishna ? 'text-[#00DFB6]' : 'text-[#097770]'}>giving leads</strong>, never scolds,
                   verifies organic sellers across 3 honest tiers, connects local circles (~3
                   km), and speaks with reverence in 12 languages.
                 </p>
 
                 {/* Device Frame Toggle */}
-                <div className="mt-5 pt-4 border-t border-[#D6E0D3] flex items-center justify-between">
-                  <span className="text-xs font-semibold text-[#4A5A51]">Preview Frame:</span>
-                  <div className="flex items-center gap-1 p-1 bg-[#EEF3EC] rounded-lg">
+                <div className={`mt-5 pt-4 border-t flex items-center justify-between ${isKrishna ? 'border-[#1B3E52]' : 'border-[#D2E3DB]'}`}>
+                  <span className={`text-xs font-semibold ${isKrishna ? 'text-[#9BC3B9]' : 'text-[#4A5A51]'}`}>Preview Frame:</span>
+                  <div className={`flex items-center gap-1 p-1 rounded-lg ${isKrishna ? 'bg-[#07131B]' : 'bg-[#EEF3EC]'}`}>
                     <button
                       onClick={() => setPhoneFrame('iphone')}
                       className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
                         phoneFrame === 'iphone'
-                          ? 'bg-white text-[#17231D] shadow-sm'
+                          ? isKrishna
+                            ? 'bg-[#183D52] text-[#EEF9F6] shadow-sm'
+                            : 'bg-white text-[#17231D] shadow-sm'
+                          : isKrishna
+                          ? 'text-[#9BC3B9] hover:text-[#EEF9F6]'
                           : 'text-[#4A5A51] hover:text-[#17231D]'
                       }`}
                     >
@@ -571,7 +1312,11 @@ export default function App() {
                       onClick={() => setPhoneFrame('android')}
                       className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
                         phoneFrame === 'android'
-                          ? 'bg-white text-[#17231D] shadow-sm'
+                          ? isKrishna
+                            ? 'bg-[#183D52] text-[#EEF9F6] shadow-sm'
+                            : 'bg-white text-[#17231D] shadow-sm'
+                          : isKrishna
+                          ? 'text-[#9BC3B9] hover:text-[#EEF9F6]'
                           : 'text-[#4A5A51] hover:text-[#17231D]'
                       }`}
                     >
@@ -581,78 +1326,159 @@ export default function App() {
                 </div>
               </div>
 
-              {/* 108 Principle Quick Explainer Card */}
-              <div className="bg-[#EEF3EC] rounded-2xl p-5 border border-[#D6E0D3]">
-                <h3 className="text-sm font-bold text-[#17231D] flex items-center gap-2">
-                  <Leaf className="w-4 h-4 text-[#1F5E3B]" />
+              {/* Full Interactive 1 -> 0 -> ∞ Scoring Graph & Principle of 108 */}
+              <Sacred108Graph
+                givingScore={givingScore}
+                lightnessScore={lightnessScore}
+                isKrishna={isKrishna}
+                compact={false}
+                onUpdateGiving={(val) => saveScoresToFirebase(val, lightnessScore)}
+                onUpdateLightness={(val) => saveScoresToFirebase(givingScore, val)}
+                onOpenPrincipleModal={() => setShowPrincipleModal(true)}
+              />
+              {false && (
+                <div>
+                <h3 className="text-sm font-bold flex items-center gap-2">
+                  <Leaf className={`w-4 h-4 ${isKrishna ? 'text-[#00DFB6]' : 'text-[#097770]'}`} />
                   <span>The 108 Principle (Two Halves of 54)</span>
                 </h3>
-                <p className="text-xs text-[#4A5A51] mt-1.5 leading-relaxed">
+                <p
+                  className={`text-xs mt-1.5 leading-relaxed ${
+                    isKrishna ? 'text-[#9BC3B9]' : 'text-[#3E564F]'
+                  }`}
+                >
                   The two figures are <em>never netted against each other</em>. A heavy travel day
                   cannot erase the seeds you planted; giving trees cannot excuse pollution. Both
                   arcs stay visible, with giving on top.
                 </p>
                 <div className="mt-4 grid grid-cols-2 gap-3">
-                  <div className="bg-white p-3 rounded-xl border border-[#D6E0D3]">
-                    <div className="flex items-center gap-1.5 text-xs font-bold text-[#1F5E3B]">
-                      <span className="w-2 h-2 rounded-full bg-[#1F5E3B]" />
+                  <div
+                    className={`p-3 rounded-xl border ${
+                      isKrishna
+                        ? 'bg-[#142C3C] border-[#1B3E52]'
+                        : 'bg-white border-[#D2E3DB]'
+                    }`}
+                  >
+                    <div
+                      className={`flex items-center gap-1.5 text-xs font-bold ${
+                        isKrishna ? 'text-[#FFB800]' : 'text-[#C58F1B]'
+                      }`}
+                    >
+                      <span
+                        className={`w-2 h-2 rounded-full ${
+                          isKrishna ? 'bg-[#FFB800]' : 'bg-[#C58F1B]'
+                        }`}
+                      />
                       <span>Given Back ({givingScore}/54)</span>
                     </div>
-                    <div className="text-[11px] text-[#7F8E85] mt-1">
+                    <div
+                      className={`text-[11px] mt-1 ${
+                        isKrishna ? 'text-[#9BC3B9]' : 'text-[#6C837C]'
+                      }`}
+                    >
                       7 Life Acts: Planting, feeding soil, poison-free food, wild birds.
                     </div>
                   </div>
-                  <div className="bg-white p-3 rounded-xl border border-[#D6E0D3]">
-                    <div className="flex items-center gap-1.5 text-xs font-bold text-[#E3A018]">
-                      <span className="w-2 h-2 rounded-full bg-[#E3A018]" />
+                  <div
+                    className={`p-3 rounded-xl border ${
+                      isKrishna
+                        ? 'bg-[#142C3C] border-[#1B3E52]'
+                        : 'bg-white border-[#D2E3DB]'
+                    }`}
+                  >
+                    <div
+                      className={`flex items-center gap-1.5 text-xs font-bold ${
+                        isKrishna ? 'text-[#00DFB6]' : 'text-[#097770]'
+                      }`}
+                    >
+                      <span
+                        className={`w-2 h-2 rounded-full ${
+                          isKrishna ? 'bg-[#00DFB6]' : 'text-[#097770]'
+                        }`}
+                      />
                       <span>Lived Lightly ({lightnessScore}/54)</span>
                     </div>
-                    <div className="text-[11px] text-[#7F8E85] mt-1">
+                    <div
+                      className={`text-[11px] mt-1 ${
+                        isKrishna ? 'text-[#9BC3B9]' : 'text-[#6C837C]'
+                      }`}
+                    >
                       Resource budget: 6.3 kg CO2e benchmark against CEA grid & travel.
                     </div>
                   </div>
                 </div>
               </div>
+              )}
 
               {/* Quick Actions to trigger modals */}
-              <div className="bg-white rounded-2xl p-5 border border-[#D6E0D3] space-y-2.5">
-                <span className="text-xs font-bold text-[#7F8E85] uppercase tracking-wider">
+              <div
+                className={`rounded-2xl p-5 border space-y-2.5 transition-colors ${
+                  isKrishna
+                    ? 'bg-[#0D212E] border-[#1B3E52] text-[#EEF9F6]'
+                    : 'bg-white border-[#D2E3DB] text-[#0C1F1B]'
+                }`}
+              >
+                <span
+                  className={`text-xs font-bold uppercase tracking-wider ${
+                    isKrishna ? 'text-[#9BC3B9]' : 'text-[#6C837C]'
+                  }`}
+                >
                   Test Dedicated Mobile Flows
                 </span>
                 <div className="grid grid-cols-2 gap-2 pt-1">
                   <button
                     onClick={() => setSimTab('habits')}
-                    className="p-2.5 bg-[#EEF3EC] hover:bg-[#E3EBD6] rounded-xl text-left transition-colors flex items-center gap-2 text-xs font-semibold text-[#6B4431]"
+                    className={`p-2.5 rounded-xl text-left transition-colors flex items-center gap-2 text-xs font-semibold ${
+                      isKrishna
+                        ? 'bg-[#142C3C] hover:bg-[#1A384C] text-[#FFB800]'
+                        : 'bg-[#EDF5F1] hover:bg-[#DCEEE5] text-[#C58F1B]'
+                    }`}
                   >
-                    <Flame className="w-4 h-4 text-[#E3A018]" />
+                    <Flame className="w-4 h-4 text-[#FFB800]" />
                     <span>Habits & Streaks</span>
                   </button>
                   <button
                     onClick={() => setShowAssistantModal(true)}
-                    className="p-2.5 bg-[#EEF3EC] hover:bg-[#E3EBD6] rounded-xl text-left transition-colors flex items-center gap-2 text-xs font-semibold text-[#1F5E3B]"
+                    className={`p-2.5 rounded-xl text-left transition-colors flex items-center gap-2 text-xs font-semibold ${
+                      isKrishna
+                        ? 'bg-[#142C3C] hover:bg-[#1A384C] text-[#00DFB6]'
+                        : 'bg-[#EDF5F1] hover:bg-[#DCEEE5] text-[#097770]'
+                    }`}
                   >
-                    <Mic className="w-4 h-4 text-[#1F5E3B]" />
+                    <Mic className="w-4 h-4" />
                     <span>Voice Assistant</span>
                   </button>
                   <button
                     onClick={() => setShowSellerOnboarding(true)}
-                    className="p-2.5 bg-[#EEF3EC] hover:bg-[#E3EBD6] rounded-xl text-left transition-colors flex items-center gap-2 text-xs font-semibold text-[#6B4431]"
+                    className={`p-2.5 rounded-xl text-left transition-colors flex items-center gap-2 text-xs font-semibold ${
+                      isKrishna
+                        ? 'bg-[#142C3C] hover:bg-[#1A384C] text-[#EEF9F6]'
+                        : 'bg-[#EDF5F1] hover:bg-[#DCEEE5] text-[#0C1F1B]'
+                    }`}
                   >
-                    <Store className="w-4 h-4 text-[#6B4431]" />
+                    <Store className="w-4 h-4" />
                     <span>Seller Onboarding</span>
                   </button>
                   <button
                     onClick={() => setShowWisdomScreen(true)}
-                    className="p-2.5 bg-[#EEF3EC] hover:bg-[#E3EBD6] rounded-xl text-left transition-colors flex items-center gap-2 text-xs font-semibold text-[#17231D]"
+                    className={`p-2.5 rounded-xl text-left transition-colors flex items-center gap-2 text-xs font-semibold ${
+                      isKrishna
+                        ? 'bg-[#142C3C] hover:bg-[#1A384C] text-[#FFB800]'
+                        : 'bg-[#EDF5F1] hover:bg-[#DCEEE5] text-[#C58F1B]'
+                    }`}
                   >
-                    <BookOpen className="w-4 h-4 text-[#7A9A45]" />
+                    <BookOpen className="w-4 h-4" />
                     <span>Veda & Gita Verses</span>
                   </button>
                   <button
                     onClick={() => setShowPrivacyScreen(true)}
-                    className="p-2.5 bg-[#EEF3EC] hover:bg-[#E3EBD6] rounded-xl text-left transition-colors flex items-center gap-2 text-xs font-semibold text-[#17231D]"
+                    className={`p-2.5 rounded-xl text-left transition-colors flex items-center gap-2 text-xs font-semibold ${
+                      isKrishna
+                        ? 'bg-[#142C3C] hover:bg-[#1A384C] text-[#00DFB6]'
+                        : 'bg-[#EDF5F1] hover:bg-[#DCEEE5] text-[#097770]'
+                    }`}
                   >
-                    <ShieldCheck className="w-4 h-4 text-[#1F5E3B]" />
+                    <ShieldCheck className="w-4 h-4" />
                     <span>Privacy & Export</span>
                   </button>
                 </div>
@@ -662,20 +1488,34 @@ export default function App() {
             {/* Right Column: High-Fidelity Smartphone Shell */}
             <div className="lg:col-span-7 flex justify-center">
               <div
-                className={`relative w-[385px] h-[780px] bg-black rounded-[48px] p-3 shadow-2xl border-4 ${
-                  phoneFrame === 'iphone' ? 'border-[#333]' : 'border-[#222]'
+                className={`relative w-[385px] h-[780px] bg-black rounded-[48px] p-3 shadow-2xl border-4 transition-all duration-300 ${
+                  phoneFrame === 'iphone'
+                    ? isKrishna
+                      ? 'border-[#1B3E52] shadow-[0_0_50px_rgba(0,223,182,0.18)]'
+                      : 'border-[#333]'
+                    : isKrishna
+                    ? 'border-[#183D52] shadow-[0_0_50px_rgba(0,223,182,0.18)]'
+                    : 'border-[#222]'
                 }`}
               >
                 {/* Dynamic Island / Punch Hole */}
                 <div className="absolute top-5 left-1/2 -translate-x-1/2 w-28 h-5 bg-black rounded-full z-40 flex items-center justify-center">
                   <div className="w-2.5 h-2.5 rounded-full bg-[#111] mr-3" />
-                  <div className="w-2 h-2 rounded-full bg-[#0a192f]" />
+                  <div className={`w-2 h-2 rounded-full ${isKrishna ? 'bg-[#00DFB6]' : 'bg-[#0a192f]'}`} />
                 </div>
 
                 {/* Inner Screen */}
-                <div className="w-full h-full bg-[#FAFCF8] rounded-[38px] overflow-hidden flex flex-col relative select-none">
+                <div
+                  className={`w-full h-full ${
+                    isKrishna ? 'bg-[#091A26] text-[#EEF9F6]' : 'bg-[#FAFCF8] text-[#0C1F1B]'
+                  } rounded-[38px] overflow-hidden flex flex-col relative select-none transition-colors duration-300`}
+                >
                   {/* Status Bar */}
-                  <div className="h-10 pt-2 px-6 flex items-center justify-between text-[11px] font-semibold text-[#17231D] z-30">
+                  <div
+                    className={`h-10 pt-2 px-6 flex items-center justify-between text-[11px] font-semibold ${
+                      isKrishna ? 'text-[#EEF9F6]' : 'text-[#0C1F1B]'
+                    } z-30`}
+                  >
                     <span>
                       {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
@@ -694,138 +1534,97 @@ export default function App() {
                       <div>
                         {/* Sky Header */}
                         <div
-                          className={`bg-gradient-to-b ${greeting.gradient} pt-4 pb-6 px-5 rounded-b-[28px] shadow-sm`}
+                          className={`bg-gradient-to-b ${
+                            isKrishna
+                              ? 'from-[#04111D] via-[#092233] to-[#0D344B]'
+                              : greeting.gradient
+                          } pt-4 pb-6 px-5 rounded-b-[28px] shadow-sm transition-all duration-300`}
                         >
                           <div className="flex items-center justify-between text-xs">
                             <span
-                              className={`font-bold tracking-widest text-[10px] ${greeting.subtextColor}`}
+                              className={`font-bold tracking-widest text-[10px] ${
+                                isKrishna ? 'text-[#00DFB6]' : greeting.subtextColor
+                              }`}
                             >
-                              PRAKRITI · प्रकृति
+                              PRAKRITI · प्रकृति · {isKrishna ? 'कृष्ण रूप' : 'राधा भाव'}
                             </span>
                             <button
                               onClick={() => {
                                 const phrase = `${greeting.devanagari}, ${greeting.meaning}. Welcome to Prakriti.`;
                                 speakText(phrase);
                               }}
-                              className="p-1 rounded-full bg-white/30 text-[#17231D] hover:bg-white/50 transition-colors"
+                              className={`p-1 rounded-full ${
+                                isKrishna
+                                  ? 'bg-white/10 text-[#00DFB6] hover:bg-white/20'
+                                  : 'bg-white/30 text-[#17231D] hover:bg-white/50'
+                              } transition-colors`}
                               title="Listen to spoken greeting"
                             >
                               <Volume2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
                           <h1
-                            className={`font-sanskrit text-3xl font-bold mt-2 ${greeting.textColor}`}
+                            className={`font-sanskrit text-3xl font-bold mt-2 ${
+                              isKrishna ? 'text-[#FFB800]' : greeting.textColor
+                            }`}
                           >
                             {greeting.devanagari}
                           </h1>
                           <div
-                            className={`text-xs font-semibold ${greeting.subtextColor} flex items-center gap-1 mt-0.5`}
+                            className={`text-xs font-semibold ${
+                              isKrishna ? 'text-[#9BC3B9]' : greeting.subtextColor
+                            } flex items-center gap-1 mt-0.5`}
                           >
                             <span>{greeting.transliteration}</span>
                             <span>·</span>
                             <span>{greeting.meaning}</span>
                           </div>
-                          <p className="text-[11px] italic text-[#17231D]/80 mt-1">
+                          <p
+                            className={`text-[11px] italic mt-1 ${
+                              isKrishna ? 'text-[#EEF9F6]/80' : 'text-[#17231D]/80'
+                            }`}
+                          >
                             Jeevo paramo dharma — Life itself is the highest duty
                           </p>
                         </div>
 
-                        {/* 108 Double Concentric Arc Ring */}
-                        <div className="p-4">
-                          <div className="bg-white rounded-2xl p-4 border border-[#D6E0D3] shadow-sm flex items-center gap-4">
-                            {/* SVG Arc Ring */}
-                            <div className="relative w-32 h-32 shrink-0 flex items-center justify-center">
-                              <svg className="w-32 h-32 -rotate-90" viewBox="0 0 120 120">
-                                {/* Outer track (Giving) */}
-                                <circle
-                                  cx="60"
-                                  cy="60"
-                                  r="48"
-                                  fill="none"
-                                  stroke="#E3EBD6"
-                                  strokeWidth="8"
-                                />
-                                <circle
-                                  cx="60"
-                                  cy="60"
-                                  r="48"
-                                  fill="none"
-                                  stroke="#1F5E3B"
-                                  strokeWidth="8"
-                                  strokeDasharray="301"
-                                  strokeDashoffset={301 - (301 * (givingScore / 54))}
-                                  strokeLinecap="round"
-                                />
-                                {/* Inner track (Lived lightly) */}
-                                <circle
-                                  cx="60"
-                                  cy="60"
-                                  r="36"
-                                  fill="none"
-                                  stroke="#FBEFD2"
-                                  strokeWidth="8"
-                                />
-                                <circle
-                                  cx="60"
-                                  cy="60"
-                                  r="36"
-                                  fill="none"
-                                  stroke="#E3A018"
-                                  strokeWidth="8"
-                                  strokeDasharray="226"
-                                  strokeDashoffset={226 - (226 * (lightnessScore / 54))}
-                                  strokeLinecap="round"
-                                />
-                              </svg>
-                              <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                                <span className="text-2xl font-extrabold text-[#17231D] leading-none">
-                                  {totalScore108}
-                                </span>
-                                <span className="text-[9px] font-bold text-[#7F8E85] tracking-wider mt-0.5">
-                                  OF 108
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Side stats: Giving stays on top! */}
-                            <div className="flex-1 space-y-2.5">
-                              <div>
-                                <div className="flex items-center gap-1.5 text-xs font-bold text-[#1F5E3B]">
-                                  <span className="w-2 h-2 rounded-full bg-[#1F5E3B]" />
-                                  <span>{givingScore} of 54</span>
-                                </div>
-                                <div className="text-[11px] text-[#4A5A51]">
-                                  Given back to life
-                                </div>
-                              </div>
-                              <div>
-                                <div className="flex items-center gap-1.5 text-xs font-bold text-[#E3A018]">
-                                  <span className="w-2 h-2 rounded-full bg-[#E3A018]" />
-                                  <span>{lightnessScore} of 54</span>
-                                </div>
-                                <div className="text-[11px] text-[#4A5A51]">
-                                  Lived lightly today
-                                </div>
-                              </div>
-                              <button
-                                onClick={() => setSimTab('footprint')}
-                                className="text-[11px] font-semibold text-[#1F5E3B] border border-[#1F5E3B] rounded-lg px-2.5 py-1 hover:bg-[#1F5E3B] hover:text-white transition-colors"
-                              >
-                                + Log Act
-                              </button>
-                            </div>
-                          </div>
+                        {/* 108 Sacred 1 -> 0 -> ∞ Scoring Graph */}
+                        <div className="p-3">
+                          <Sacred108Graph
+                            givingScore={givingScore}
+                            lightnessScore={lightnessScore}
+                            isKrishna={isKrishna}
+                            compact={true}
+                            onUpdateGiving={(val) => saveScoresToFirebase(val, lightnessScore)}
+                            onUpdateLightness={(val) => saveScoresToFirebase(givingScore, val)}
+                            onOpenPrincipleModal={() => setShowPrincipleModal(true)}
+                          />
+                        </div>
 
                           {/* Daily Small Step */}
-                          <div className="mt-3.5 bg-[#EEF3EC] p-3.5 rounded-2xl border border-[#D6E0D3]">
-                            <div className="flex items-center justify-between text-[10px] font-bold text-[#1F5E3B] uppercase tracking-wider mb-1">
-                              <span>Daily Small Step</span>
-                              <span className="text-[#7A9A45]">No-Cost Action</span>
+                          <div
+                            className={`mt-3.5 p-3.5 rounded-2xl border transition-colors ${
+                              isKrishna
+                                ? 'bg-[#102B3C] border-[#1B3E52] text-[#EEF9F6]'
+                                : 'bg-[#EDF5F1] border-[#D2E3DB] text-[#0C1F1B]'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider mb-1">
+                              <span className={isKrishna ? 'text-[#00DFB6]' : 'text-[#097770]'}>
+                                Daily Small Step
+                              </span>
+                              <span className={isKrishna ? 'text-[#10B981]' : 'text-[#1A5F44]'}>
+                                No-Cost Action
+                              </span>
                             </div>
-                            <h4 className="text-xs font-bold text-[#17231D]">
+                            <h4 className="text-xs font-bold">
                               Feed garden soil with organic vegetable scraps
                             </h4>
-                            <p className="text-[11px] text-[#4A5A51] mt-1 leading-normal">
+                            <p
+                              className={`text-[11px] mt-1 leading-normal ${
+                                isKrishna ? 'text-[#9BC3B9]' : 'text-[#3E564F]'
+                              }`}
+                            >
                               Raw kitchen peelings nourish beneficial earthworms and retain soil
                               moisture during peak daylight.
                             </p>
@@ -834,49 +1633,95 @@ export default function App() {
                           {/* Gemini AI Eco Studio Card in App */}
                           <button
                             onClick={() => setActiveView('ai-studio')}
-                            className="mt-3 w-full bg-gradient-to-r from-[#E8F5E9] to-[#C8E6C9] p-3 rounded-2xl border border-[#7A9A45]/30 text-left flex items-center justify-between transition-transform active:scale-[0.98]"
+                            className={`mt-3 w-full p-3 rounded-2xl border text-left flex items-center justify-between transition-all active:scale-[0.98] ${
+                              isKrishna
+                                ? 'bg-gradient-to-r from-[#0C2D3A] to-[#124C58] border-[#00DFB6]/30 text-white'
+                                : 'bg-gradient-to-r from-[#E8F5E9] to-[#C8E6C9] border-[#097770]/30 text-[#0C1F1B]'
+                            }`}
                           >
                             <div className="flex items-center gap-2.5">
-                              <div className="w-9 h-9 rounded-xl bg-[#1F5E3B] text-white flex items-center justify-center">
-                                <Sparkles className="w-4 h-4 text-[#E3A018]" />
+                              <div
+                                className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                                  isKrishna ? 'bg-[#00DFB6] text-[#07131B]' : 'bg-[#097770] text-white'
+                                }`}
+                              >
+                                <Sparkles className="w-4 h-4 text-[#FFB800]" />
                               </div>
                               <div>
-                                <div className="text-xs font-bold text-[#123A25]">
+                                <div className="text-xs font-bold">
                                   Gemini AI Eco Studio
                                 </div>
-                                <div className="text-[10px] text-[#4A5A51]">
+                                <div
+                                  className={`text-[10px] ${
+                                    isKrishna ? 'text-[#9BC3B9]' : 'text-[#4A5A51]'
+                                  }`}
+                                >
                                   Create & edit images with 3.1 Flash & 3 Pro (1K, 2K, 4K)
                                 </div>
                               </div>
                             </div>
-                            <ChevronRight className="w-4 h-4 text-[#1F5E3B]" />
+                            <ChevronRight
+                              className={`w-4 h-4 ${isKrishna ? 'text-[#00DFB6]' : 'text-[#097770]'}`}
+                            />
                           </button>
 
                           {/* Verse of the Day Card */}
-                          <div className="mt-3.5 bg-white p-3.5 rounded-2xl border border-[#D6E0D3]">
-                            <div className="text-[9px] font-bold text-[#6B4431] uppercase tracking-wider">
+                          <div
+                            className={`mt-3.5 p-3.5 rounded-2xl border transition-colors ${
+                              isKrishna
+                                ? 'bg-[#0D212E] border-[#1B3E52]'
+                                : 'bg-white border-[#D2E3DB]'
+                            }`}
+                          >
+                            <div
+                              className={`text-[9px] font-bold uppercase tracking-wider ${
+                                isKrishna ? 'text-[#FFB800]' : 'text-[#C58F1B]'
+                              }`}
+                            >
                               Atharva Veda 12.1.12 · Bhumi Sukta
                             </div>
-                            <div className="font-sanskrit text-base font-semibold text-[#17231D] mt-1">
+                            <div className="font-sanskrit text-base font-semibold mt-1">
                               माता भूमिः पुत्रो अहं पृथिव्याः
                             </div>
-                            <div className="text-[11px] italic text-[#4A5A51] mt-0.5">
+                            <div
+                              className={`text-[11px] italic mt-0.5 ${
+                                isKrishna ? 'text-[#9BC3B9]' : 'text-[#3E564F]'
+                              }`}
+                            >
                               "Earth is my mother, and I am her child."
                             </div>
-                            <div className="mt-2 text-[10px] font-semibold text-[#1F5E3B] bg-[#E3EBD6] p-2 rounded-lg">
+                            <div
+                              className={`mt-2 text-[10px] font-semibold p-2 rounded-lg ${
+                                isKrishna
+                                  ? 'text-[#00DFB6] bg-[#00DFB6]/10 border border-[#00DFB6]/20'
+                                  : 'text-[#097770] bg-[#EDF5F1] border border-[#D2E3DB]'
+                              }`}
+                            >
                               Practice step: Treat every patch of open soil with reverence; leave no
                               plastic behind.
                             </div>
                           </div>
 
                           {/* Daily Habits Quick Widget in Today View */}
-                          <div className="mt-3.5 bg-white p-3.5 rounded-2xl border border-[#D6E0D3] space-y-2">
+                          <div
+                            className={`mt-3.5 p-3.5 rounded-2xl border space-y-2 transition-colors ${
+                              isKrishna
+                                ? 'bg-[#0D212E] border-[#1B3E52]'
+                                : 'bg-white border-[#D2E3DB]'
+                            }`}
+                          >
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-1.5">
-                                <Flame className="w-4 h-4 text-[#E3A018]" />
-                                <span className="text-xs font-bold text-[#17231D]">Daily Eco Habits</span>
+                                <Flame className="w-4 h-4 text-[#FFB800]" />
+                                <span className="text-xs font-bold">Daily Eco Habits</span>
                               </div>
-                              <span className="text-[10px] font-semibold text-[#1F5E3B] bg-[#E3EBD6] px-2 py-0.5 rounded-md">
+                              <span
+                                className={`text-[10px] font-semibold px-2 py-0.5 rounded-md ${
+                                  isKrishna
+                                    ? 'text-[#00DFB6] bg-[#00DFB6]/15'
+                                    : 'text-[#097770] bg-[#EDF5F1]'
+                                }`}
+                              >
                                 {habits.filter((h) => h.completedToday).length}/{habits.length} Done Today
                               </span>
                             </div>
@@ -885,13 +1730,21 @@ export default function App() {
                                 <div
                                   key={h.id}
                                   onClick={() => handleToggleHabit(h.id)}
-                                  className="flex items-center justify-between p-2 rounded-xl bg-[#FAFCF8] border border-[#D6E0D3] text-xs cursor-pointer hover:bg-[#EEF3EC] transition-colors"
+                                  className={`flex items-center justify-between p-2 rounded-xl text-xs cursor-pointer border transition-colors ${
+                                    isKrishna
+                                      ? 'bg-[#142C3C] border-[#1B3E52] hover:bg-[#1A384C]'
+                                      : 'bg-[#FAFCF8] border-[#D2E3DB] hover:bg-[#EDF5F1]'
+                                  }`}
                                 >
                                   <div className="flex items-center gap-2">
                                     <div
                                       className={`w-4 h-4 rounded-md border flex items-center justify-center transition-colors ${
                                         h.completedToday
-                                          ? 'bg-[#1F5E3B] border-[#1F5E3B] text-white'
+                                          ? isKrishna
+                                            ? 'bg-[#00DFB6] border-[#00DFB6] text-[#07131B]'
+                                            : 'bg-[#097770] border-[#097770] text-white'
+                                          : isKrishna
+                                          ? 'border-[#5E857C] bg-[#07131B]'
                                           : 'border-[#7F8E85] bg-white'
                                       }`}
                                     >
@@ -899,28 +1752,35 @@ export default function App() {
                                     </div>
                                     <span
                                       className={`font-medium ${
-                                        h.completedToday ? 'line-through text-[#7F8E85]' : 'text-[#17231D]'
+                                        h.completedToday
+                                          ? 'line-through opacity-50'
+                                          : ''
                                       }`}
                                     >
                                       {h.title}
                                     </span>
                                   </div>
-                                  <span className="text-[10px] font-bold text-[#6B4431] flex items-center gap-0.5">
-                                    <Flame className="w-3 h-3 text-[#E3A018]" /> {h.streak}d
+                                  <span
+                                    className={`text-[10px] font-bold flex items-center gap-0.5 ${
+                                      isKrishna ? 'text-[#FFB800]' : 'text-[#C58F1B]'
+                                    }`}
+                                  >
+                                    <Flame className="w-3 h-3 text-[#FFB800]" /> {h.streak}d
                                   </span>
                                 </div>
                               ))}
                             </div>
                             <button
                               onClick={() => setSimTab('habits')}
-                              className="w-full text-center text-[11px] font-bold text-[#1F5E3B] hover:underline pt-1 flex items-center justify-center gap-1"
+                              className={`w-full text-center text-[11px] font-bold hover:underline pt-1 flex items-center justify-center gap-1 ${
+                                isKrishna ? 'text-[#00DFB6]' : 'text-[#097770]'
+                              }`}
                             >
                               <span>Open Habits tracker & streak counter</span>
                               <ChevronRight className="w-3 h-3" />
                             </button>
                           </div>
                         </div>
-                      </div>
                     )}
 
                     {/* TAB: HABITS & STREAKS */}
@@ -930,20 +1790,36 @@ export default function App() {
                         <div className="flex items-center justify-between">
                           <div>
                             <div className="flex items-center gap-1.5">
-                              <h3 className="text-base font-bold text-[#17231D]">
+                              <h3
+                                className={`text-base font-bold ${
+                                  isKrishna ? 'text-[#EEF9F6]' : 'text-[#0C1F1B]'
+                                }`}
+                              >
                                 Ecological Habits
                               </h3>
-                              <span className="font-sanskrit text-xs text-[#7A9A45] font-semibold">
+                              <span
+                                className={`font-sanskrit text-xs font-semibold ${
+                                  isKrishna ? 'text-[#00DFB6]' : 'text-[#097770]'
+                                }`}
+                              >
                                 दैनिक साधना
                               </span>
                             </div>
-                            <p className="text-[10px] text-[#4A5A51] mt-0.5">
+                            <p
+                              className={`text-[10px] mt-0.5 ${
+                                isKrishna ? 'text-[#9BC3B9]' : 'text-[#3E564F]'
+                              }`}
+                            >
                               Daily recurring acts that keep soil, flora & birds thriving.
                             </p>
                           </div>
                           <button
                             onClick={() => setShowAddHabitModal(true)}
-                            className="p-1.5 bg-[#1F5E3B] text-white rounded-lg hover:bg-[#123A25] transition-colors flex items-center gap-1 text-[11px] font-bold shadow-sm"
+                            className={`p-1.5 rounded-lg transition-colors flex items-center gap-1 text-[11px] font-bold shadow-sm ${
+                              isKrishna
+                                ? 'bg-[#00DFB6] hover:bg-[#00C29F] text-[#07131B]'
+                                : 'bg-[#097770] hover:bg-[#065A54] text-white'
+                            }`}
                             title="Add Custom Ecological Habit"
                           >
                             <Plus className="w-3.5 h-3.5" />
@@ -952,18 +1828,30 @@ export default function App() {
                         </div>
 
                         {/* Top Streaks Highlight Banner */}
-                        <div className="bg-gradient-to-r from-[#1F5E3B] to-[#2B7A4F] text-white p-3.5 rounded-2xl shadow-md space-y-2.5">
+                        <div
+                          className={`p-3.5 rounded-2xl shadow-md space-y-2.5 transition-colors ${
+                            isKrishna
+                              ? 'bg-gradient-to-r from-[#0C2D3A] via-[#103D4E] to-[#124C58] border border-[#00DFB6]/30 text-white'
+                              : 'bg-gradient-to-r from-[#097770] to-[#1A5F44] text-white'
+                          }`}
+                        >
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                              <div className="w-9 h-9 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
-                                <Flame className="w-5 h-5 text-[#FEE180]" />
+                              <div
+                                className={`w-9 h-9 rounded-xl flex items-center justify-center backdrop-blur-sm ${
+                                  isKrishna ? 'bg-black/30' : 'bg-white/20'
+                                }`}
+                              >
+                                <Flame className="w-5 h-5 text-[#FFB800]" />
                               </div>
                               <div>
                                 <div className="text-[10px] font-medium text-white/80 uppercase tracking-wider">
                                   Current Rhythm
                                 </div>
                                 <div className="text-sm font-extrabold flex items-center gap-1.5">
-                                  <span>{habits.filter((h) => h.completedToday).length} of {habits.length} Done Today</span>
+                                  <span>
+                                    {habits.filter((h) => h.completedToday).length} of {habits.length} Done Today
+                                  </span>
                                 </div>
                               </div>
                             </div>
@@ -971,7 +1859,7 @@ export default function App() {
                               <div className="text-[10px] font-medium text-white/80">
                                 Longest Streak
                               </div>
-                              <div className="text-base font-black text-[#FEE180] flex items-center justify-end gap-1">
+                              <div className="text-base font-black text-[#FFB800] flex items-center justify-end gap-1">
                                 <span>{Math.max(...habits.map((h) => h.streak), 0)} days</span>
                               </div>
                             </div>
@@ -981,23 +1869,33 @@ export default function App() {
                           <div className="space-y-1">
                             <div className="w-full bg-white/20 rounded-full h-1.5 overflow-hidden">
                               <div
-                                className="bg-[#E3A018] h-full rounded-full transition-all duration-500"
+                                className={`h-full rounded-full transition-all duration-500 ${
+                                  isKrishna ? 'bg-[#FFB800]' : 'bg-[#FFD166]'
+                                }`}
                                 style={{
                                   width: `${(habits.filter((h) => h.completedToday).length / Math.max(habits.length, 1)) * 100}%`,
                                 }}
                               />
                             </div>
-                            <div className="flex justify-between text-[9px] text-white/75 font-medium">
+                            <div className="flex justify-between text-[9px] text-white/85 font-medium">
                               <span>Consistent small acts protect ecosystems</span>
-                              <span>+{habits.reduce((acc, h) => acc + (h.completedToday ? h.pts : 0), 0)} Giving pts</span>
+                              <span className="font-bold">
+                                +{habits.reduce((acc, h) => acc + (h.completedToday ? h.pts : 0), 0)} Giving pts
+                              </span>
                             </div>
                           </div>
                         </div>
 
                         {/* Celebration Toast (when habit completed) */}
                         {celebratingHabitId && (
-                          <div className="bg-[#FBEFD2] border border-[#E3A018] p-2.5 rounded-xl flex items-center gap-2 text-xs font-semibold text-[#6B4431]">
-                            <Sparkles className="w-4 h-4 text-[#E3A018] shrink-0" />
+                          <div
+                            className={`p-2.5 rounded-xl flex items-center gap-2 text-xs font-semibold border ${
+                              isKrishna
+                                ? 'bg-[#142C3C] border-[#FFB800]/50 text-[#FFB800]'
+                                : 'bg-[#FFF9EB] border-[#C58F1B]/40 text-[#6B4431]'
+                            }`}
+                          >
+                            <Sparkles className="w-4 h-4 text-[#FFB800] shrink-0" />
                             <span>
                               Sadhu! Daily rhythm sustained. Your streak increased!
                             </span>
@@ -1024,8 +1922,12 @@ export default function App() {
                               onClick={() => setHabitFilter(tab.key)}
                               className={`px-2.5 py-1 rounded-full text-[11px] font-semibold transition-colors border ${
                                 habitFilter === tab.key
-                                  ? 'bg-[#1F5E3B] text-white border-[#1F5E3B]'
-                                  : 'bg-white text-[#4A5A51] border-[#D6E0D3] hover:bg-[#EEF3EC]'
+                                  ? isKrishna
+                                    ? 'bg-[#00DFB6] text-[#07131B] border-[#00DFB6]'
+                                    : 'bg-[#097770] text-white border-[#097770]'
+                                  : isKrishna
+                                  ? 'bg-[#102B3C] text-[#9BC3B9] border-[#1B3E52] hover:bg-[#183D52]'
+                                  : 'bg-white text-[#3E564F] border-[#D2E3DB] hover:bg-[#EDF5F1]'
                               }`}
                             >
                               {tab.label}
@@ -1046,8 +1948,12 @@ export default function App() {
                                 key={habit.id}
                                 className={`p-3 rounded-2xl border transition-all ${
                                   habit.completedToday
-                                    ? 'bg-[#FAFCF8] border-[#7A9A45]/40 shadow-xs'
-                                    : 'bg-white border-[#D6E0D3] shadow-xs hover:border-[#1F5E3B]/40'
+                                    ? isKrishna
+                                      ? 'bg-[#0D2636] border-[#00DFB6]/30'
+                                      : 'bg-[#FAFCF8] border-[#097770]/30 shadow-xs'
+                                    : isKrishna
+                                    ? 'bg-[#0D212E] border-[#1B3E52] hover:border-[#00DFB6]/40'
+                                    : 'bg-white border-[#D2E3DB] shadow-xs hover:border-[#097770]/40'
                                 }`}
                               >
                                 <div className="flex items-start justify-between gap-2.5">
@@ -1056,8 +1962,12 @@ export default function App() {
                                     onClick={() => handleToggleHabit(habit.id)}
                                     className={`mt-0.5 w-6 h-6 rounded-lg border-2 flex items-center justify-center shrink-0 transition-all ${
                                       habit.completedToday
-                                        ? 'bg-[#1F5E3B] border-[#1F5E3B] text-white shadow-xs'
-                                        : 'border-[#7F8E85] bg-white hover:border-[#1F5E3B]'
+                                        ? isKrishna
+                                          ? 'bg-[#00DFB6] border-[#00DFB6] text-[#07131B] shadow-xs'
+                                          : 'bg-[#097770] border-[#097770] text-white shadow-xs'
+                                        : isKrishna
+                                        ? 'border-[#42645C] bg-[#07131B] hover:border-[#00DFB6]'
+                                        : 'border-[#98ABA2] bg-white hover:border-[#097770]'
                                     }`}
                                     title={habit.completedToday ? 'Mark as not done' : 'Mark as done today'}
                                   >
@@ -1073,13 +1983,19 @@ export default function App() {
                                         <h4
                                           className={`text-xs font-bold leading-tight ${
                                             habit.completedToday
-                                              ? 'line-through text-[#7F8E85]'
-                                              : 'text-[#17231D]'
+                                              ? 'line-through opacity-60'
+                                              : isKrishna
+                                              ? 'text-[#EEF9F6]'
+                                              : 'text-[#0C1F1B]'
                                           }`}
                                         >
                                           {habit.title}
                                         </h4>
-                                        <span className="font-sanskrit text-[10px] text-[#7A9A45] font-semibold">
+                                        <span
+                                          className={`font-sanskrit text-[10px] font-semibold ${
+                                            isKrishna ? 'text-[#00DFB6]' : 'text-[#097770]'
+                                          }`}
+                                        >
                                           {habit.hindiTitle}
                                         </span>
                                       </div>
@@ -1088,13 +2004,17 @@ export default function App() {
                                       <div
                                         className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black shrink-0 ${
                                           habit.completedToday
-                                            ? 'bg-[#FBEFD2] text-[#6B4431] border border-[#E3A018]'
-                                            : 'bg-[#EEF3EC] text-[#4A5A51]'
+                                            ? isKrishna
+                                              ? 'bg-[#FFB800]/20 text-[#FFB800] border border-[#FFB800]/40'
+                                              : 'bg-[#FFF4D9] text-[#7C530A] border border-[#C58F1B]'
+                                            : isKrishna
+                                            ? 'bg-[#102B3C] text-[#9BC3B9]'
+                                            : 'bg-[#EDF5F1] text-[#3E564F]'
                                         }`}
                                       >
                                         <Flame
                                           className={`w-3 h-3 ${
-                                            habit.completedToday ? 'text-[#E3A018]' : 'text-[#7F8E85]'
+                                            habit.completedToday ? 'text-[#FFB800]' : 'opacity-40'
                                           }`}
                                         />
                                         <span>{habit.streak}d streak</span>
@@ -1102,14 +2022,26 @@ export default function App() {
                                     </div>
 
                                     {/* Eco Impact note */}
-                                    <p className="text-[10px] text-[#4A5A51] mt-1 leading-snug">
+                                    <p
+                                      className={`text-[10px] mt-1 leading-snug ${
+                                        isKrishna ? 'text-[#9BC3B9]' : 'text-[#3E564F]'
+                                      }`}
+                                    >
                                       {habit.ecoImpact}
                                     </p>
 
                                     {/* Footer: Frequency, 7-Day History dots, Points */}
-                                    <div className="mt-2.5 pt-2 border-t border-[#D6E0D3]/60 flex items-center justify-between gap-2">
+                                    <div
+                                      className={`mt-2.5 pt-2 border-t flex items-center justify-between gap-2 ${
+                                        isKrishna ? 'border-[#1B3E52]' : 'border-[#D2E3DB]'
+                                      }`}
+                                    >
                                       <div className="flex items-center gap-2">
-                                        <span className="text-[9px] font-bold text-[#7F8E85] uppercase tracking-wider">
+                                        <span
+                                          className={`text-[9px] font-bold uppercase tracking-wider ${
+                                            isKrishna ? 'text-[#9BC3B9]' : 'text-[#6C837C]'
+                                          }`}
+                                        >
                                           {habit.frequency}
                                         </span>
 
@@ -1122,8 +2054,12 @@ export default function App() {
                                                 key={dIdx}
                                                 className={`w-3.5 h-3.5 rounded-full flex items-center justify-center text-[7px] font-bold ${
                                                   isDone
-                                                    ? 'bg-[#1F5E3B] text-white'
-                                                    : 'bg-[#EEF3EC] text-[#7F8E85]'
+                                                    ? isKrishna
+                                                      ? 'bg-[#00DFB6] text-[#07131B]'
+                                                      : 'bg-[#097770] text-white'
+                                                    : isKrishna
+                                                    ? 'bg-[#142C3C] text-[#5E857C]'
+                                                    : 'bg-[#EDF5F1] text-[#98ABA2]'
                                                 }`}
                                                 title={`${day}: ${isDone ? 'Completed' : 'Missed'}`}
                                               >
@@ -1135,7 +2071,13 @@ export default function App() {
                                       </div>
 
                                       <div className="flex items-center gap-1.5">
-                                        <span className="text-[9px] font-bold text-[#1F5E3B] bg-[#E3EBD6] px-1.5 py-0.5 rounded">
+                                        <span
+                                          className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                                            isKrishna
+                                              ? 'text-[#00DFB6] bg-[#00DFB6]/15'
+                                              : 'text-[#097770] bg-[#EDF5F1]'
+                                          }`}
+                                        >
                                           +{habit.pts} Giving
                                         </span>
                                       </div>
@@ -1147,7 +2089,11 @@ export default function App() {
                         </div>
 
                         {/* Reset / Demo Footer */}
-                        <div className="pt-2 flex items-center justify-between text-[10px] text-[#7F8E85]">
+                        <div
+                          className={`pt-2 flex items-center justify-between text-[10px] ${
+                            isKrishna ? 'text-[#9BC3B9]' : 'text-[#6C837C]'
+                          }`}
+                        >
                           <button
                             onClick={() => {
                               setHabits((prev) =>
@@ -1159,7 +2105,11 @@ export default function App() {
                               );
                               speakText('Daily habits reset for testing.');
                             }}
-                            className="flex items-center gap-1 text-[#4A5A51] hover:text-[#1F5E3B] font-semibold"
+                            className={`flex items-center gap-1 font-semibold ${
+                              isKrishna
+                                ? 'text-[#9BC3B9] hover:text-[#00DFB6]'
+                                : 'text-[#3E564F] hover:text-[#097770]'
+                            }`}
                           >
                             <RotateCcw className="w-3 h-3" />
                             <span>Reset Today's Checks for Testing</span>
@@ -1173,10 +2123,20 @@ export default function App() {
                     {simTab === 'news' && (
                       <div className="p-4 space-y-3">
                         <div className="flex items-center justify-between">
-                          <h3 className="text-base font-bold text-[#17231D]">
+                          <h3
+                            className={`text-base font-bold ${
+                              isKrishna ? 'text-[#EEF9F6]' : 'text-[#0C1F1B]'
+                            }`}
+                          >
                             Environmental Updates
                           </h3>
-                          <span className="text-[10px] text-[#7F8E85]">Verified Feeds</span>
+                          <span
+                            className={`text-[10px] ${
+                              isKrishna ? 'text-[#9BC3B9]' : 'text-[#6C837C]'
+                            }`}
+                          >
+                            Verified Feeds
+                          </span>
                         </div>
                         {/* Topic chips */}
                         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
@@ -1185,8 +2145,12 @@ export default function App() {
                               key={t}
                               className={`px-2.5 py-1 rounded-full whitespace-nowrap text-[11px] font-medium border ${
                                 idx === 0
-                                  ? 'bg-[#1F5E3B] text-white border-[#1F5E3B]'
-                                  : 'bg-white text-[#4A5A51] border-[#D6E0D3]'
+                                  ? isKrishna
+                                    ? 'bg-[#00DFB6] text-[#07131B] border-[#00DFB6]'
+                                    : 'bg-[#097770] text-white border-[#097770]'
+                                  : isKrishna
+                                  ? 'bg-[#102B3C] text-[#9BC3B9] border-[#1B3E52]'
+                                  : 'bg-white text-[#3E564F] border-[#D2E3DB]'
                               }`}
                             >
                               {t}
@@ -1213,24 +2177,46 @@ export default function App() {
                         ].map((item, idx) => (
                           <div
                             key={idx}
-                            className="bg-white p-3.5 rounded-2xl border border-[#D6E0D3] space-y-2"
+                            className={`p-3.5 rounded-2xl border space-y-2 transition-colors ${
+                              isKrishna
+                                ? 'bg-[#0D212E] border-[#1B3E52] text-[#EEF9F6]'
+                                : 'bg-white border-[#D2E3DB] text-[#0C1F1B]'
+                            }`}
                           >
-                            <div className="flex items-center gap-2 text-[10px] text-[#7A9A45] font-bold">
-                              <span>{item.topic.toUpperCase()}</span>
+                            <div className="flex items-center gap-2 text-[10px] font-bold">
+                              <span className={isKrishna ? 'text-[#00DFB6]' : 'text-[#097770]'}>
+                                {item.topic.toUpperCase()}
+                              </span>
                               <span>·</span>
-                              <span className="text-[#7F8E85]">{item.time}</span>
+                              <span className={isKrishna ? 'text-[#9BC3B9]' : 'text-[#6C837C]'}>
+                                {item.time}
+                              </span>
                             </div>
-                            <h4 className="text-xs font-bold text-[#17231D] leading-snug">
+                            <h4 className="text-xs font-bold leading-snug">
                               {item.title}
                             </h4>
-                            <div className="bg-[#EEF3EC] p-2.5 rounded-xl space-y-1 text-[11px]">
-                              <div className="text-[#17231D]">
-                                <span className="font-semibold text-[#4A5A51]">Effect: </span>
-                                {item.effect}
+                            <div
+                              className={`p-2.5 rounded-xl space-y-1 text-[11px] ${
+                                isKrishna ? 'bg-[#142C3C]' : 'bg-[#EDF5F1]'
+                              }`}
+                            >
+                              <div>
+                                <span
+                                  className={`font-semibold ${
+                                    isKrishna ? 'text-[#9BC3B9]' : 'text-[#3E564F]'
+                                  }`}
+                                >
+                                  Effect:{' '}
+                                </span>
+                                <span>{item.effect}</span>
                               </div>
-                              <div className="text-[#1F5E3B] font-semibold">
+                              <div
+                                className={`font-semibold ${
+                                  isKrishna ? 'text-[#00DFB6]' : 'text-[#097770]'
+                                }`}
+                              >
                                 <span>Small step: </span>
-                                {item.step}
+                                <span>{item.step}</span>
                               </div>
                             </div>
                           </div>
@@ -1241,16 +2227,32 @@ export default function App() {
                     {/* TAB: FOOTPRINT & GIVING */}
                     {simTab === 'footprint' && (
                       <div className="p-4 space-y-3">
-                        <h3 className="text-base font-bold text-[#17231D]">108 Footprint & Giving</h3>
+                        <h3
+                          className={`text-base font-bold ${
+                            isKrishna ? 'text-[#EEF9F6]' : 'text-[#0C1F1B]'
+                          }`}
+                        >
+                          108 Footprint & Giving
+                        </h3>
                         {/* Verdict Banner (Never Scold!) */}
-                        <div className="bg-[#E3EBD6] p-3 rounded-xl border border-[#1F5E3B]/20 flex items-center gap-2 text-xs font-semibold text-[#1F5E3B]">
+                        <div
+                          className={`p-3 rounded-xl border flex items-center gap-2 text-xs font-semibold ${
+                            isKrishna
+                              ? 'bg-[#102B3C] border-[#00DFB6]/30 text-[#00DFB6]'
+                              : 'bg-[#EDF5F1] border-[#097770]/30 text-[#097770]'
+                          }`}
+                        >
                           <Leaf className="w-4 h-4 shrink-0" />
                           <span>You gave something back today. That stays.</span>
                         </div>
 
                         {/* 7 Giving Acts */}
                         <div className="space-y-2 pt-1">
-                          <span className="text-xs font-bold text-[#17231D]">
+                          <span
+                            className={`text-xs font-bold ${
+                              isKrishna ? 'text-[#EEF9F6]' : 'text-[#0C1F1B]'
+                            }`}
+                          >
                             7 Acts of Giving Back
                           </span>
                           {[
@@ -1264,23 +2266,38 @@ export default function App() {
                           ].map((act, i) => (
                             <div
                               key={i}
-                              className="bg-white p-2.5 rounded-xl border border-[#D6E0D3] flex items-center justify-between text-xs"
+                              className={`p-2.5 rounded-xl border flex items-center justify-between text-xs transition-colors ${
+                                isKrishna
+                                  ? 'bg-[#0D212E] border-[#1B3E52] text-[#EEF9F6]'
+                                  : 'bg-white border-[#D2E3DB] text-[#0C1F1B]'
+                              }`}
                             >
                               <div className="flex items-center gap-2">
-                                <span className="w-6 h-6 rounded-lg bg-[#EEF3EC] text-[#1F5E3B] flex items-center justify-center font-bold text-[10px]">
+                                <span
+                                  className={`w-6 h-6 rounded-lg flex items-center justify-center font-bold text-[10px] ${
+                                    isKrishna
+                                      ? 'bg-[#142C3C] text-[#00DFB6]'
+                                      : 'bg-[#EDF5F1] text-[#097770]'
+                                  }`}
+                                >
                                   {i + 1}
                                 </span>
-                                <span className="font-medium text-[#17231D]">{act.name}</span>
+                                <span className="font-medium">{act.name}</span>
                               </div>
                               <button
                                 onClick={() => {
-                                  setGivingScore((prev) => Math.min(54, prev + act.pts));
+                                  const nextGiving = Math.min(54, givingScore + act.pts);
+                                  saveScoresToFirebase(nextGiving, lightnessScore);
                                   setLoggedActs([
                                     { id: String(Date.now()), name: act.name, pts: act.pts },
                                     ...loggedActs,
                                   ]);
                                 }}
-                                className="px-2 py-1 bg-[#1F5E3B] text-white rounded-lg text-[10px] font-bold hover:bg-[#123A25] transition-colors"
+                                className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-colors ${
+                                  isKrishna
+                                    ? 'bg-[#00DFB6] hover:bg-[#00C29F] text-[#07131B]'
+                                    : 'bg-[#097770] hover:bg-[#065A54] text-white'
+                                }`}
                               >
                                 +{act.pts} pts
                               </button>
@@ -1291,19 +2308,30 @@ export default function App() {
                         {/* Today's Logged Entries */}
                         {loggedActs.length > 0 && (
                           <div className="space-y-1.5 pt-2">
-                            <span className="text-xs font-bold text-[#7F8E85]">Today's Acts</span>
+                            <span
+                              className={`text-xs font-bold ${
+                                isKrishna ? 'text-[#9BC3B9]' : 'text-[#6C837C]'
+                              }`}
+                            >
+                              Today's Acts
+                            </span>
                             {loggedActs.map((entry, index) => (
                               <div
                                 key={entry.id}
-                                className="bg-[#FAFCF8] p-2 rounded-lg border border-[#D6E0D3] flex items-center justify-between text-[11px]"
+                                className={`p-2 rounded-lg border flex items-center justify-between text-[11px] ${
+                                  isKrishna
+                                    ? 'bg-[#142C3C] border-[#1B3E52] text-[#EEF9F6]'
+                                    : 'bg-[#FAFCF8] border-[#D2E3DB] text-[#0C1F1B]'
+                                }`}
                               >
-                                <span className="text-[#17231D]">{entry.name}</span>
+                                <span>{entry.name}</span>
                                 <button
                                   onClick={() => {
                                     setLoggedActs(loggedActs.filter((_, idx) => idx !== index));
-                                    setGivingScore((prev) => Math.max(0, prev - entry.pts));
+                                    const nextGiving = Math.max(0, givingScore - entry.pts);
+                                    saveScoresToFirebase(nextGiving, lightnessScore);
                                   }}
-                                  className="text-[#7F8E85] hover:text-[#B3412F]"
+                                  className="text-red-400 hover:text-red-300"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
@@ -1318,20 +2346,40 @@ export default function App() {
                     {simTab === 'market' && (
                       <div className="p-4 space-y-3">
                         <div className="flex items-center justify-between">
-                          <h3 className="text-base font-bold text-[#17231D]">
+                          <h3
+                            className={`text-base font-bold ${
+                              isKrishna ? 'text-[#EEF9F6]' : 'text-[#0C1F1B]'
+                            }`}
+                          >
                             Genuine Organic Market
                           </h3>
                           <button
                             onClick={() => setShowSellerOnboarding(true)}
-                            className="text-xs font-bold text-[#6B4431] bg-[#FBEFD2] px-2.5 py-1 rounded-lg"
+                            className={`text-xs font-bold px-2.5 py-1 rounded-lg ${
+                              isKrishna
+                                ? 'bg-[#FFB800]/20 text-[#FFB800] border border-[#FFB800]/40'
+                                : 'bg-[#FBEFD2] text-[#6B4431]'
+                            }`}
                           >
                             Sell Here
                           </button>
                         </div>
 
                         {/* Three Tiers explanation */}
-                        <div className="bg-[#EEF3EC] p-2.5 rounded-xl text-[10px] text-[#4A5A51] space-y-0.5">
-                          <span className="font-bold text-[#1F5E3B]">3 Honest Tiers: </span>
+                        <div
+                          className={`p-2.5 rounded-xl text-[10px] space-y-0.5 border ${
+                            isKrishna
+                              ? 'bg-[#102B3C] border-[#1B3E52] text-[#9BC3B9]'
+                              : 'bg-[#EDF5F1] border-[#D2E3DB] text-[#3E564F]'
+                          }`}
+                        >
+                          <span
+                            className={`font-bold ${
+                              isKrishna ? 'text-[#00DFB6]' : 'text-[#097770]'
+                            }`}
+                          >
+                            3 Honest Tiers:{' '}
+                          </span>
                           <span>
                             Tier 1 (Board Certified) · Tier 2 (PGS-India Peer Certified) · Tier 3
                             (Vouched by 3+ Neighbours).
@@ -1367,21 +2415,45 @@ export default function App() {
                         ].map((prod, idx) => (
                           <div
                             key={idx}
-                            className="bg-white p-3 rounded-2xl border border-[#D6E0D3] space-y-1.5"
+                            className={`p-3 rounded-2xl border space-y-1.5 transition-colors ${
+                              isKrishna
+                                ? 'bg-[#0D212E] border-[#1B3E52] text-[#EEF9F6]'
+                                : 'bg-white border-[#D2E3DB] text-[#0C1F1B]'
+                            }`}
                           >
                             <div className="flex items-center justify-between">
-                              <span className="text-xs font-bold text-[#17231D]">{prod.name}</span>
-                              <span className="text-xs font-extrabold text-[#1F5E3B]">
+                              <span className="text-xs font-bold">{prod.name}</span>
+                              <span
+                                className={`text-xs font-extrabold ${
+                                  isKrishna ? 'text-[#00DFB6]' : 'text-[#097770]'
+                                }`}
+                              >
                                 {prod.price}
                               </span>
                             </div>
-                            <div className="text-[10px] text-[#7F8E85]">
+                            <div
+                              className={`text-[10px] ${
+                                isKrishna ? 'text-[#9BC3B9]' : 'text-[#6C837C]'
+                              }`}
+                            >
                               {prod.farm} · {prod.dist}
                             </div>
-                            <div className="text-[10px] font-semibold text-[#1F5E3B] bg-[#E3EBD6] px-2 py-0.5 rounded-md inline-block">
+                            <div
+                              className={`text-[10px] font-semibold px-2 py-0.5 rounded-md inline-block ${
+                                isKrishna
+                                  ? 'text-[#00DFB6] bg-[#00DFB6]/15'
+                                  : 'text-[#097770] bg-[#EDF5F1]'
+                              }`}
+                            >
                               {prod.tier}
                             </div>
-                            <p className="text-[11px] text-[#4A5A51]">{prod.why}</p>
+                            <p
+                              className={`text-[11px] ${
+                                isKrishna ? 'text-[#9BC3B9]' : 'text-[#3E564F]'
+                              }`}
+                            >
+                              {prod.why}
+                            </p>
                           </div>
                         ))}
                       </div>
@@ -1391,10 +2463,20 @@ export default function App() {
                     {simTab === 'circle' && (
                       <div className="p-4 space-y-3">
                         <div className="flex items-center justify-between">
-                          <h3 className="text-base font-bold text-[#17231D]">
+                          <h3
+                            className={`text-base font-bold ${
+                              isKrishna ? 'text-[#EEF9F6]' : 'text-[#0C1F1B]'
+                            }`}
+                          >
                             Local Circle (~3 km)
                           </h3>
-                          <span className="text-[10px] text-[#7F8E85]">Meetups & Knowledge</span>
+                          <span
+                            className={`text-[10px] ${
+                              isKrishna ? 'text-[#9BC3B9]' : 'text-[#6C837C]'
+                            }`}
+                          >
+                            Meetups & Knowledge
+                          </span>
                         </div>
 
                         {[
@@ -1417,18 +2499,36 @@ export default function App() {
                         ].map((post, idx) => (
                           <div
                             key={idx}
-                            className="bg-white p-3.5 rounded-2xl border border-[#D6E0D3] space-y-2"
+                            className={`p-3.5 rounded-2xl border space-y-2 transition-colors ${
+                              isKrishna
+                                ? 'bg-[#0D212E] border-[#1B3E52] text-[#EEF9F6]'
+                                : 'bg-white border-[#D2E3DB] text-[#0C1F1B]'
+                            }`}
                           >
-                            <div className="flex items-center justify-between text-[10px] text-[#7A9A45] font-bold">
-                              <span>{post.type}</span>
-                              <span className="text-[#7F8E85]">{post.author}</span>
+                            <div className="flex items-center justify-between text-[10px] font-bold">
+                              <span className={isKrishna ? 'text-[#FFB800]' : 'text-[#C58F1B]'}>
+                                {post.type}
+                              </span>
+                              <span className={isKrishna ? 'text-[#9BC3B9]' : 'text-[#6C837C]'}>
+                                {post.author}
+                              </span>
                             </div>
-                            <h4 className="text-xs font-bold text-[#17231D]">{post.title}</h4>
-                            <p className="text-[11px] text-[#4A5A51]">{post.details}</p>
+                            <h4 className="text-xs font-bold">{post.title}</h4>
+                            <p
+                              className={`text-[11px] ${
+                                isKrishna ? 'text-[#9BC3B9]' : 'text-[#3E564F]'
+                              }`}
+                            >
+                              {post.details}
+                            </p>
                             {post.rsvps !== null && (
                               <button
                                 onClick={() => speakText(`RSVP confirmed for ${post.title}`)}
-                                className="w-full mt-2 py-1.5 bg-[#1F5E3B] text-white rounded-lg text-xs font-semibold hover:bg-[#123A25] transition-colors"
+                                className={`w-full mt-2 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                                  isKrishna
+                                    ? 'bg-[#00DFB6] hover:bg-[#00C29F] text-[#07131B]'
+                                    : 'bg-[#097770] hover:bg-[#065A54] text-white'
+                                }`}
                               >
                                 RSVP to Meetup ({post.rsvps} going)
                               </button>
@@ -1440,11 +2540,23 @@ export default function App() {
                   </div>
 
                   {/* BOTTOM TAB BAR (Tabs + Raised Center Mic) */}
-                  <div className="h-16 bg-white border-t border-[#D6E0D3] px-1.5 flex items-center justify-between z-30 shrink-0">
+                  <div
+                    className={`h-16 border-t px-1.5 flex items-center justify-between z-30 shrink-0 transition-colors duration-300 ${
+                      isKrishna
+                        ? 'bg-[#07131B] border-[#1B3E52]'
+                        : 'bg-white border-[#D2E3DB]'
+                    }`}
+                  >
                     <button
                       onClick={() => setSimTab('today')}
-                      className={`flex flex-col items-center text-[9px] font-semibold px-1 ${
-                        simTab === 'today' ? 'text-[#1F5E3B]' : 'text-[#7F8E85]'
+                      className={`flex flex-col items-center text-[9px] font-semibold px-1 transition-colors ${
+                        simTab === 'today'
+                          ? isKrishna
+                            ? 'text-[#00DFB6]'
+                            : 'text-[#097770]'
+                          : isKrishna
+                          ? 'text-[#9BC3B9]/60 hover:text-[#9BC3B9]'
+                          : 'text-[#6C837C] hover:text-[#0C1F1B]'
                       }`}
                     >
                       <Leaf className="w-4 h-4" />
@@ -1453,21 +2565,31 @@ export default function App() {
 
                     <button
                       onClick={() => setSimTab('habits')}
-                      className={`flex flex-col items-center text-[9px] font-semibold px-1 relative ${
-                        simTab === 'habits' ? 'text-[#1F5E3B]' : 'text-[#7F8E85]'
+                      className={`flex flex-col items-center text-[9px] font-semibold px-1 relative transition-colors ${
+                        simTab === 'habits'
+                          ? isKrishna
+                            ? 'text-[#00DFB6]'
+                            : 'text-[#097770]'
+                          : isKrishna
+                          ? 'text-[#9BC3B9]/60 hover:text-[#9BC3B9]'
+                          : 'text-[#6C837C] hover:text-[#0C1F1B]'
                       }`}
                     >
-                      <Flame className={`w-4 h-4 ${simTab === 'habits' ? 'text-[#E3A018]' : ''}`} />
+                      <Flame className={`w-4 h-4 ${simTab === 'habits' ? 'text-[#FFB800]' : ''}`} />
                       <span>Habits</span>
                       {habits.some((h) => !h.completedToday) && (
-                        <span className="absolute top-0 right-1 w-1.5 h-1.5 rounded-full bg-[#E3A018]" />
+                        <span className="absolute top-0 right-1 w-1.5 h-1.5 rounded-full bg-[#FFB800]" />
                       )}
                     </button>
 
                     {/* Raised Center Mic (Voice Assistant) */}
                     <button
                       onClick={() => setShowAssistantModal(true)}
-                      className="-mt-5 w-11 h-11 rounded-full bg-[#1F5E3B] text-white flex items-center justify-center shadow-lg border-2 border-white active:scale-95 transition-transform shrink-0"
+                      className={`-mt-5 w-11 h-11 rounded-full flex items-center justify-center shadow-lg border-2 active:scale-95 transition-transform shrink-0 ${
+                        isKrishna
+                          ? 'bg-[#00DFB6] text-[#07131B] border-[#07131B] shadow-[0_0_15px_rgba(0,223,182,0.4)]'
+                          : 'bg-[#097770] text-white border-white'
+                      }`}
                       title="Open Prakriti Voice Assistant"
                     >
                       <Mic className="w-5 h-5" />
@@ -1475,8 +2597,14 @@ export default function App() {
 
                     <button
                       onClick={() => setSimTab('news')}
-                      className={`flex flex-col items-center text-[9px] font-semibold px-1 ${
-                        simTab === 'news' ? 'text-[#1F5E3B]' : 'text-[#7F8E85]'
+                      className={`flex flex-col items-center text-[9px] font-semibold px-1 transition-colors ${
+                        simTab === 'news'
+                          ? isKrishna
+                            ? 'text-[#00DFB6]'
+                            : 'text-[#097770]'
+                          : isKrishna
+                          ? 'text-[#9BC3B9]/60 hover:text-[#9BC3B9]'
+                          : 'text-[#6C837C] hover:text-[#0C1F1B]'
                       }`}
                     >
                       <Globe className="w-4 h-4" />
@@ -1485,8 +2613,14 @@ export default function App() {
 
                     <button
                       onClick={() => setSimTab('market')}
-                      className={`flex flex-col items-center text-[9px] font-semibold px-1 ${
-                        simTab === 'market' ? 'text-[#1F5E3B]' : 'text-[#7F8E85]'
+                      className={`flex flex-col items-center text-[9px] font-semibold px-1 transition-colors ${
+                        simTab === 'market'
+                          ? isKrishna
+                            ? 'text-[#00DFB6]'
+                            : 'text-[#097770]'
+                          : isKrishna
+                          ? 'text-[#9BC3B9]/60 hover:text-[#9BC3B9]'
+                          : 'text-[#6C837C] hover:text-[#0C1F1B]'
                       }`}
                     >
                       <Store className="w-4 h-4" />
@@ -1495,8 +2629,14 @@ export default function App() {
 
                     <button
                       onClick={() => setSimTab('circle')}
-                      className={`flex flex-col items-center text-[9px] font-semibold px-1 ${
-                        simTab === 'circle' ? 'text-[#1F5E3B]' : 'text-[#7F8E85]'
+                      className={`flex flex-col items-center text-[9px] font-semibold px-1 transition-colors ${
+                        simTab === 'circle'
+                          ? isKrishna
+                            ? 'text-[#00DFB6]'
+                            : 'text-[#097770]'
+                          : isKrishna
+                          ? 'text-[#9BC3B9]/60 hover:text-[#9BC3B9]'
+                          : 'text-[#6C837C] hover:text-[#0C1F1B]'
                       }`}
                     >
                       <Users className="w-4 h-4" />
@@ -1507,16 +2647,24 @@ export default function App() {
                   {/* MODAL OVERLAYS (Assistant, Seller, Privacy, Wisdom, Add Habit) */}
                   {/* 0. Add Custom Habit Modal */}
                   {showAddHabitModal && (
-                    <div className="absolute inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-                      <div className="bg-[#FAFCF8] rounded-2xl p-4 w-full max-w-xs border border-[#D6E0D3] shadow-xl space-y-3">
+                    <div className="absolute inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+                      <div
+                        className={`rounded-2xl p-4 w-full max-w-xs border shadow-xl space-y-3 transition-colors ${
+                          isKrishna
+                            ? 'bg-[#0D212E] border-[#1B3E52] text-[#EEF9F6]'
+                            : 'bg-[#FAFCF8] border-[#D2E3DB] text-[#0C1F1B]'
+                        }`}
+                      >
                         <div className="flex items-center justify-between">
-                          <h4 className="text-xs font-bold text-[#17231D] flex items-center gap-1.5">
-                            <Flame className="w-4 h-4 text-[#E3A018]" />
+                          <h4 className="text-xs font-bold flex items-center gap-1.5">
+                            <Flame className="w-4 h-4 text-[#FFB800]" />
                             <span>New Ecological Habit</span>
                           </h4>
                           <button
                             onClick={() => setShowAddHabitModal(false)}
-                            className="text-xs text-[#7F8E85] hover:text-[#17231D] p-1"
+                            className={`text-xs p-1 ${
+                              isKrishna ? 'text-[#9BC3B9] hover:text-white' : 'text-[#6C837C] hover:text-[#0C1F1B]'
+                            }`}
                           >
                             ✕
                           </button>
@@ -1524,7 +2672,11 @@ export default function App() {
 
                         <div className="space-y-2 text-xs">
                           <div>
-                            <label className="text-[10px] font-bold text-[#4A5A51] block mb-0.5">
+                            <label
+                              className={`text-[10px] font-bold block mb-0.5 ${
+                                isKrishna ? 'text-[#9BC3B9]' : 'text-[#3E564F]'
+                              }`}
+                            >
                               Habit Name
                             </label>
                             <input
@@ -1532,12 +2684,20 @@ export default function App() {
                               value={newHabitTitle}
                               onChange={(e) => setNewHabitTitle(e.target.value)}
                               placeholder="e.g. Watering Tulsi, Earthen Khamba"
-                              className="w-full p-2 bg-white border border-[#D6E0D3] rounded-lg text-xs text-[#17231D]"
+                              className={`w-full p-2 border rounded-lg text-xs ${
+                                isKrishna
+                                  ? 'bg-[#07131B] border-[#1B3E52] text-[#EEF9F6]'
+                                  : 'bg-white border-[#D2E3DB] text-[#0C1F1B]'
+                              }`}
                             />
                           </div>
 
                           <div>
-                            <label className="text-[10px] font-bold text-[#4A5A51] block mb-0.5">
+                            <label
+                              className={`text-[10px] font-bold block mb-0.5 ${
+                                isKrishna ? 'text-[#9BC3B9]' : 'text-[#3E564F]'
+                              }`}
+                            >
                               Hindi / Regional Subtitle
                             </label>
                             <input
@@ -1545,19 +2705,31 @@ export default function App() {
                               value={newHabitHindiTitle}
                               onChange={(e) => setNewHabitHindiTitle(e.target.value)}
                               placeholder="e.g. तुलसी जलार्पण"
-                              className="w-full p-2 bg-white border border-[#D6E0D3] rounded-lg text-xs text-[#17231D]"
+                              className={`w-full p-2 border rounded-lg text-xs ${
+                                isKrishna
+                                  ? 'bg-[#07131B] border-[#1B3E52] text-[#EEF9F6]'
+                                  : 'bg-white border-[#D2E3DB] text-[#0C1F1B]'
+                              }`}
                             />
                           </div>
 
                           <div className="grid grid-cols-2 gap-2">
                             <div>
-                              <label className="text-[10px] font-bold text-[#4A5A51] block mb-0.5">
+                              <label
+                                className={`text-[10px] font-bold block mb-0.5 ${
+                                  isKrishna ? 'text-[#9BC3B9]' : 'text-[#3E564F]'
+                                }`}
+                              >
                                 Frequency
                               </label>
                               <select
                                 value={newHabitFrequency}
                                 onChange={(e) => setNewHabitFrequency(e.target.value)}
-                                className="w-full p-1.5 bg-white border border-[#D6E0D3] rounded-lg text-[11px] text-[#17231D]"
+                                className={`w-full p-1.5 border rounded-lg text-[11px] ${
+                                  isKrishna
+                                    ? 'bg-[#07131B] border-[#1B3E52] text-[#EEF9F6]'
+                                    : 'bg-white border-[#D2E3DB] text-[#0C1F1B]'
+                                }`}
                               >
                                 <option value="Daily Morning">Daily Morning</option>
                                 <option value="Daily Evening">Daily Evening</option>
@@ -1566,13 +2738,21 @@ export default function App() {
                               </select>
                             </div>
                             <div>
-                              <label className="text-[10px] font-bold text-[#4A5A51] block mb-0.5">
+                              <label
+                                className={`text-[10px] font-bold block mb-0.5 ${
+                                  isKrishna ? 'text-[#9BC3B9]' : 'text-[#3E564F]'
+                                }`}
+                              >
                                 Category
                               </label>
                               <select
                                 value={newHabitCategory}
                                 onChange={(e) => setNewHabitCategory(e.target.value as any)}
-                                className="w-full p-1.5 bg-white border border-[#D6E0D3] rounded-lg text-[11px] text-[#17231D]"
+                                className={`w-full p-1.5 border rounded-lg text-[11px] ${
+                                  isKrishna
+                                    ? 'bg-[#07131B] border-[#1B3E52] text-[#EEF9F6]'
+                                    : 'bg-white border-[#D2E3DB] text-[#0C1F1B]'
+                                }`}
                               >
                                 <option value="sacred-flora">Sacred Flora</option>
                                 <option value="soil-waste">Soil & Compost</option>
@@ -1585,7 +2765,11 @@ export default function App() {
                           </div>
 
                           <div>
-                            <label className="text-[10px] font-bold text-[#4A5A51] block mb-0.5">
+                            <label
+                              className={`text-[10px] font-bold block mb-0.5 ${
+                                isKrishna ? 'text-[#9BC3B9]' : 'text-[#3E564F]'
+                              }`}
+                            >
                               Direct Ecological Benefit
                             </label>
                             <input
@@ -1593,7 +2777,11 @@ export default function App() {
                               value={newHabitImpact}
                               onChange={(e) => setNewHabitImpact(e.target.value)}
                               placeholder="e.g. Oxygen enrichment and pollinator refuge"
-                              className="w-full p-2 bg-white border border-[#D6E0D3] rounded-lg text-xs text-[#17231D]"
+                              className={`w-full p-2 border rounded-lg text-xs ${
+                                isKrishna
+                                  ? 'bg-[#07131B] border-[#1B3E52] text-[#EEF9F6]'
+                                  : 'bg-white border-[#D2E3DB] text-[#0C1F1B]'
+                              }`}
                             />
                           </div>
                         </div>
@@ -1601,7 +2789,11 @@ export default function App() {
                         <div className="flex gap-2 pt-1">
                           <button
                             onClick={() => setShowAddHabitModal(false)}
-                            className="flex-1 py-1.5 border border-[#D6E0D3] text-[#4A5A51] rounded-lg text-xs font-semibold"
+                            className={`flex-1 py-1.5 border rounded-lg text-xs font-semibold ${
+                              isKrishna
+                                ? 'border-[#1B3E52] text-[#9BC3B9] hover:bg-[#142C3C]'
+                                : 'border-[#D2E3DB] text-[#3E564F] hover:bg-[#EDF5F1]'
+                            }`}
                           >
                             Cancel
                           </button>
@@ -1629,7 +2821,11 @@ export default function App() {
                               setShowAddHabitModal(false);
                               speakText(`Added ${newHabit.title} to your daily habits.`);
                             }}
-                            className="flex-1 py-1.5 bg-[#1F5E3B] text-white rounded-lg text-xs font-bold hover:bg-[#123A25]"
+                            className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                              isKrishna
+                                ? 'bg-[#00DFB6] hover:bg-[#00C29F] text-[#07131B]'
+                                : 'bg-[#097770] hover:bg-[#065A54] text-white'
+                            }`}
                           >
                             Save Habit
                           </button>
@@ -1640,12 +2836,24 @@ export default function App() {
 
                   {/* 1. Voice Assistant Modal */}
                   {showAssistantModal && (
-                    <div className="absolute inset-0 bg-[#FAFCF8] z-50 p-5 flex flex-col justify-between">
+                    <div
+                      className={`absolute inset-0 z-50 p-5 flex flex-col justify-between transition-colors ${
+                        isKrishna ? 'bg-[#091A26] text-[#EEF9F6]' : 'bg-[#FAFCF8] text-[#0C1F1B]'
+                      }`}
+                    >
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-[#1F5E3B]">Prakriti Voice Assistant</span>
+                        <span
+                          className={`text-xs font-bold ${
+                            isKrishna ? 'text-[#00DFB6]' : 'text-[#097770]'
+                          }`}
+                        >
+                          Prakriti Voice Assistant
+                        </span>
                         <button
                           onClick={() => setShowAssistantModal(false)}
-                          className="p-1 rounded-full text-[#7F8E85] hover:text-[#17231D]"
+                          className={`p-1 rounded-full ${
+                            isKrishna ? 'text-[#9BC3B9] hover:text-white' : 'text-[#7F8E85] hover:text-[#17231D]'
+                          }`}
                         >
                           ✕
                         </button>
@@ -1662,24 +2870,46 @@ export default function App() {
                               );
                             }
                           }}
-                          className={`w-28 h-28 rounded-full bg-gradient-to-tr from-[#123A25] via-[#1F5E3B] to-[#7A9A45] flex items-center justify-center text-white cursor-pointer shadow-xl transition-all ${
-                            assistantListening ? 'scale-110 shadow-[#1F5E3B]/50' : 'scale-100'
+                          className={`w-28 h-28 rounded-full bg-gradient-to-tr ${
+                            isKrishna
+                              ? 'from-[#07131B] via-[#0A4150] to-[#00DFB6] shadow-[0_0_30px_rgba(0,223,182,0.3)]'
+                              : 'from-[#065A54] via-[#097770] to-[#1A5F44] shadow-xl'
+                          } flex items-center justify-center text-white cursor-pointer transition-all ${
+                            assistantListening ? 'scale-110' : 'scale-100'
                           }`}
                         >
                           <Mic className="w-10 h-10 animate-pulse" />
                         </div>
-                        <span className="text-xs font-semibold text-[#1F5E3B] mt-4">
+                        <span
+                          className={`text-xs font-semibold mt-4 ${
+                            isKrishna ? 'text-[#00DFB6]' : 'text-[#097770]'
+                          }`}
+                        >
                           {assistantListening ? 'Listening with reverence...' : 'Tap orb to speak'}
                         </span>
-                        <p className="text-xs text-[#4A5A51] text-center mt-3 max-w-[260px]">
+                        <p
+                          className={`text-xs text-center mt-3 max-w-[260px] ${
+                            isKrishna ? 'text-[#9BC3B9]' : 'text-[#3E564F]'
+                          }`}
+                        >
                           {assistantReply}
                         </p>
-                        <div className="mt-3 bg-[#E3EBD6] p-2.5 rounded-xl text-[11px] text-[#1F5E3B] font-medium text-center">
+                        <div
+                          className={`mt-3 p-2.5 rounded-xl text-[11px] font-medium text-center border ${
+                            isKrishna
+                              ? 'bg-[#102B3C] border-[#1B3E52] text-[#EEF9F6]'
+                              : 'bg-[#EDF5F1] border-[#D2E3DB] text-[#097770]'
+                          }`}
+                        >
                           <strong>Small Step:</strong> {assistantSmallStep}
                         </div>
                       </div>
 
-                      <div className="text-[10px] text-[#7F8E85] text-center">
+                      <div
+                        className={`text-[10px] text-center ${
+                          isKrishna ? 'text-[#9BC3B9]/70' : 'text-[#7F8E85]'
+                        }`}
+                      >
                         Audio is processed on-device and never retained or uploaded.
                       </div>
                     </div>
@@ -1687,27 +2917,45 @@ export default function App() {
 
                   {/* 2. Seller Onboarding Modal (3 Spoken Yes/No Questions) */}
                   {showSellerOnboarding && (
-                    <div className="absolute inset-0 bg-[#FAFCF8] z-50 p-5 flex flex-col justify-between">
+                    <div
+                      className={`absolute inset-0 z-50 p-5 flex flex-col justify-between transition-colors ${
+                        isKrishna ? 'bg-[#091A26] text-[#EEF9F6]' : 'bg-[#FAFCF8] text-[#0C1F1B]'
+                      }`}
+                    >
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-[#6B4431]">
+                        <span
+                          className={`text-xs font-bold ${
+                            isKrishna ? 'text-[#FFB800]' : 'text-[#C58F1B]'
+                          }`}
+                        >
                           Farmer Onboarding · किसान पंजीकरण
                         </span>
                         <button
                           onClick={() => setShowSellerOnboarding(false)}
-                          className="p-1 rounded-full text-[#7F8E85]"
+                          className={`p-1 rounded-full ${
+                            isKrishna ? 'text-[#9BC3B9] hover:text-white' : 'text-[#7F8E85]'
+                          }`}
                         >
                           ✕
                         </button>
                       </div>
 
                       <div className="my-auto text-center space-y-4">
-                        <div className="w-12 h-12 rounded-full bg-[#FBEFD2] text-[#6B4431] flex items-center justify-center mx-auto">
+                        <div
+                          className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto ${
+                            isKrishna ? 'bg-[#FFB800]/20 text-[#FFB800]' : 'bg-[#FBEFD2] text-[#6B4431]'
+                          }`}
+                        >
                           <Store className="w-6 h-6" />
                         </div>
-                        <h4 className="text-lg font-bold text-[#17231D]">
+                        <h4 className="text-lg font-bold">
                           Do you have an organic certificate from the government board?
                         </h4>
-                        <p className="text-xs text-[#4A5A51]">
+                        <p
+                          className={`text-xs ${
+                            isKrishna ? 'text-[#9BC3B9]' : 'text-[#4A5A51]'
+                          }`}
+                        >
                           क्या आपके पास सरकारी बोर्ड से जैविक प्रमाणपत्र है?
                         </p>
                         <div className="grid grid-cols-2 gap-3 pt-4">
@@ -1716,7 +2964,11 @@ export default function App() {
                               speakText('Great! You will be certified under Tier 1 government board.');
                               setShowSellerOnboarding(false);
                             }}
-                            className="py-3 bg-[#1F5E3B] text-white font-bold rounded-xl text-sm"
+                            className={`py-3 font-bold rounded-xl text-sm transition-colors ${
+                              isKrishna
+                                ? 'bg-[#00DFB6] hover:bg-[#00C29F] text-[#07131B]'
+                                : 'bg-[#097770] hover:bg-[#065A54] text-white'
+                            }`}
                           >
                             Yes · हाँ
                           </button>
@@ -1725,14 +2977,22 @@ export default function App() {
                               speakText('That is fine. Your neighbours can vouch for you, and we will help you get certified for free later.');
                               setShowSellerOnboarding(false);
                             }}
-                            className="py-3 bg-white border border-[#D6E0D3] text-[#17231D] font-bold rounded-xl text-sm"
+                            className={`py-3 border font-bold rounded-xl text-sm transition-colors ${
+                              isKrishna
+                                ? 'bg-[#102B3C] border-[#1B3E52] text-[#EEF9F6] hover:bg-[#183D52]'
+                                : 'bg-white border-[#D2E3DB] text-[#0C1F1B] hover:bg-[#EDF5F1]'
+                            }`}
                           >
                             No · नहीं
                           </button>
                         </div>
                       </div>
 
-                      <div className="text-[10px] text-[#7F8E85] text-center">
+                      <div
+                        className={`text-[10px] text-center ${
+                          isKrishna ? 'text-[#9BC3B9]/70' : 'text-[#7F8E85]'
+                        }`}
+                      >
                         No jargon. Tier 3 is an honest ladder toward PGS-India certification.
                       </div>
                     </div>
@@ -1740,34 +3000,72 @@ export default function App() {
 
                   {/* 3. Privacy Screen Modal */}
                   {showPrivacyScreen && (
-                    <div className="absolute inset-0 bg-[#FAFCF8] z-50 p-5 overflow-y-auto">
+                    <div
+                      className={`absolute inset-0 z-50 p-5 overflow-y-auto transition-colors ${
+                        isKrishna ? 'bg-[#091A26] text-[#EEF9F6]' : 'bg-[#FAFCF8] text-[#0C1F1B]'
+                      }`}
+                    >
                       <div className="flex items-center justify-between mb-4">
-                        <span className="text-xs font-bold text-[#1F5E3B]">
+                        <span
+                          className={`text-xs font-bold ${
+                            isKrishna ? 'text-[#00DFB6]' : 'text-[#097770]'
+                          }`}
+                        >
                           Privacy & Data Sovereignty
                         </span>
                         <button
                           onClick={() => setShowPrivacyScreen(false)}
-                          className="p-1 rounded-full text-[#7F8E85]"
+                          className={`p-1 rounded-full ${
+                            isKrishna ? 'text-[#9BC3B9] hover:text-white' : 'text-[#7F8E85]'
+                          }`}
                         >
                           ✕
                         </button>
                       </div>
-                      <div className="space-y-3 text-xs text-[#4A5A51]">
-                        <div className="bg-white p-3 rounded-xl border border-[#D6E0D3]">
-                          <strong className="text-[#17231D]">1. XChaCha20-Poly1305 Vault:</strong>
+                      <div className="space-y-3 text-xs">
+                        <div
+                          className={`p-3 rounded-xl border ${
+                            isKrishna
+                              ? 'bg-[#0D212E] border-[#1B3E52] text-[#9BC3B9]'
+                              : 'bg-white border-[#D2E3DB] text-[#4A5A51]'
+                          }`}
+                        >
+                          <strong className={isKrishna ? 'text-[#EEF9F6]' : 'text-[#0C1F1B]'}>
+                            1. XChaCha20-Poly1305 Vault:
+                          </strong>
                           <p className="mt-1">Footprint & journal encrypted on phone; server holds only ciphertext.</p>
                         </div>
-                        <div className="bg-white p-3 rounded-xl border border-[#D6E0D3]">
-                          <strong className="text-[#17231D]">2. Coarsened Location:</strong>
+                        <div
+                          className={`p-3 rounded-xl border ${
+                            isKrishna
+                              ? 'bg-[#0D212E] border-[#1B3E52] text-[#9BC3B9]'
+                              : 'bg-white border-[#D2E3DB] text-[#4A5A51]'
+                          }`}
+                        >
+                          <strong className={isKrishna ? 'text-[#EEF9F6]' : 'text-[#0C1F1B]'}>
+                            2. Coarsened Location:
+                          </strong>
                           <p className="mt-1">~1 km cell only. Exact GPS coordinates are never transmitted.</p>
                         </div>
-                        <div className="bg-white p-3 rounded-xl border border-[#D6E0D3]">
-                          <strong className="text-[#17231D]">3. Export Before Deletion:</strong>
+                        <div
+                          className={`p-3 rounded-xl border ${
+                            isKrishna
+                              ? 'bg-[#0D212E] border-[#1B3E52] text-[#9BC3B9]'
+                              : 'bg-white border-[#D2E3DB] text-[#4A5A51]'
+                          }`}
+                        >
+                          <strong className={isKrishna ? 'text-[#EEF9F6]' : 'text-[#0C1F1B]'}>
+                            3. Export Before Deletion:
+                          </strong>
                           <p className="mt-1">Download encrypted archive zip first before account termination.</p>
                         </div>
                         <a
                           href="/api/flutter-project/download-zip"
-                          className="block text-center py-2 bg-[#1F5E3B] text-white font-bold rounded-xl"
+                          className={`block text-center py-2 font-bold rounded-xl transition-colors ${
+                            isKrishna
+                              ? 'bg-[#00DFB6] hover:bg-[#00C29F] text-[#07131B]'
+                              : 'bg-[#097770] hover:bg-[#065A54] text-white'
+                          }`}
                         >
                           Download Data Archive
                         </a>
@@ -1777,34 +3075,72 @@ export default function App() {
 
                   {/* 4. Wisdom Screen Modal */}
                   {showWisdomScreen && (
-                    <div className="absolute inset-0 bg-[#FAFCF8] z-50 p-5 overflow-y-auto">
+                    <div
+                      className={`absolute inset-0 z-50 p-5 overflow-y-auto transition-colors ${
+                        isKrishna ? 'bg-[#091A26] text-[#EEF9F6]' : 'bg-[#FAFCF8] text-[#0C1F1B]'
+                      }`}
+                    >
                       <div className="flex items-center justify-between mb-4">
-                        <span className="text-xs font-bold text-[#6B4431]">
+                        <span
+                          className={`text-xs font-bold ${
+                            isKrishna ? 'text-[#FFB800]' : 'text-[#C58F1B]'
+                          }`}
+                        >
                           Bhagavad Gita & Atharva Veda
                         </span>
                         <button
                           onClick={() => setShowWisdomScreen(false)}
-                          className="p-1 rounded-full text-[#7F8E85]"
+                          className={`p-1 rounded-full ${
+                            isKrishna ? 'text-[#9BC3B9] hover:text-white' : 'text-[#7F8E85]'
+                          }`}
                         >
                           ✕
                         </button>
                       </div>
                       <div className="space-y-3">
-                        <div className="bg-white p-3 rounded-xl border border-[#D6E0D3]">
-                          <div className="text-[10px] text-[#6B4431] font-bold">GITA 3.14</div>
-                          <div className="font-sanskrit text-sm font-bold text-[#17231D] mt-1">
+                        <div
+                          className={`p-3 rounded-xl border ${
+                            isKrishna ? 'bg-[#0D212E] border-[#1B3E52]' : 'bg-white border-[#D2E3DB]'
+                          }`}
+                        >
+                          <div
+                            className={`text-[10px] font-bold ${
+                              isKrishna ? 'text-[#FFB800]' : 'text-[#C58F1B]'
+                            }`}
+                          >
+                            GITA 3.14
+                          </div>
+                          <div className="font-sanskrit text-sm font-bold mt-1">
                             अन्नाद्भवन्ति भूतानि पर्जन्यादन्नसम्भवः
                           </div>
-                          <p className="text-[11px] text-[#4A5A51] mt-1">
+                          <p
+                            className={`text-[11px] mt-1 ${
+                              isKrishna ? 'text-[#9BC3B9]' : 'text-[#4A5A51]'
+                            }`}
+                          >
                             All bodies subsist on grains from rains; rains come from giving back to nature.
                           </p>
                         </div>
-                        <div className="bg-white p-3 rounded-xl border border-[#D6E0D3]">
-                          <div className="text-[10px] text-[#6B4431] font-bold">BHUMI SUKTA 12.1.35</div>
-                          <div className="font-sanskrit text-sm font-bold text-[#17231D] mt-1">
+                        <div
+                          className={`p-3 rounded-xl border ${
+                            isKrishna ? 'bg-[#0D212E] border-[#1B3E52]' : 'bg-white border-[#D2E3DB]'
+                          }`}
+                        >
+                          <div
+                            className={`text-[10px] font-bold ${
+                              isKrishna ? 'text-[#FFB800]' : 'text-[#C58F1B]'
+                            }`}
+                          >
+                            BHUMI SUKTA 12.1.35
+                          </div>
+                          <div className="font-sanskrit text-sm font-bold mt-1">
                             यत् ते भूमे विखनामि क्षिप्रं तद् अपि रोहतु
                           </div>
-                          <p className="text-[11px] text-[#4A5A51] mt-1">
+                          <p
+                            className={`text-[11px] mt-1 ${
+                              isKrishna ? 'text-[#9BC3B9]' : 'text-[#4A5A51]'
+                            }`}
+                          >
                             Whatever I dig up of thee, O Earth, may that quickly grow over again.
                           </p>
                         </div>
@@ -2344,13 +3680,32 @@ export default function App() {
         )}
       </main>
 
+      {/* Principle of 108 Sacred Modal */}
+      <PrincipleOf108Modal
+        isOpen={showPrincipleModal}
+        onClose={() => setShowPrincipleModal(false)}
+        isKrishna={isKrishna}
+        givingScore={givingScore}
+        lightnessScore={lightnessScore}
+      />
+
       {/* Footer */}
-      <footer className="border-t border-[#D6E0D3] py-6 px-6 text-center text-xs text-[#7F8E85] bg-[#FAFCF8]">
-        <p className="font-sanskrit text-sm text-[#1F5E3B] font-semibold">
+      <footer
+        className={`border-t py-6 px-6 text-center text-xs transition-colors duration-300 ${
+          isKrishna
+            ? 'bg-[#040C12] border-[#1B3E52] text-[#9BC3B9]'
+            : 'bg-[#FAFCF8] border-[#D2E3DB] text-[#6C837C]'
+        }`}
+      >
+        <p
+          className={`font-sanskrit text-sm font-semibold ${
+            isKrishna ? 'text-[#00DFB6]' : 'text-[#097770]'
+          }`}
+        >
           जीवो परमो धर्मः · सर्वभूतहिते रताः
         </p>
         <p className="mt-1">
-          Prakriti Ecological Ecosystem · Full-Stack Web + Complete Flutter Mobile Codebase (Android & iOS)
+          Prakriti Ecological Ecosystem · Full-Stack Web + Complete Flutter Mobile Codebase (Android & iOS) · Peacock Feather Design System (मयूर पिच्छ)
         </p>
       </footer>
     </div>

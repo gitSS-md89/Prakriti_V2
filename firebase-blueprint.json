@@ -1,0 +1,194 @@
+{
+  "entities": {
+    "userProfile": {
+      "title": "User Profile",
+      "description": "User account profile storing identity, language and theme preferences.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique user identifier matching auth UID."
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "User email address."
+        },
+        "displayName": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Display name of the user."
+        },
+        "selectedLanguage": {
+          "type": "string",
+          "maxLength": 10,
+          "description": "Preferred language code (e.g. hi, en)."
+        },
+        "themeMode": {
+          "type": "string",
+          "enum": ["radha", "krishna", "system"],
+          "description": "Active peacock feather theme mode."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update timestamp."
+        }
+      },
+      "required": ["id", "createdAt", "updatedAt"]
+    },
+    "ecoScore": {
+      "title": "Eco Score Record",
+      "description": "Daily 108 Sacred Lemniscate balance score record.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Score record identifier."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Owner user UID."
+        },
+        "givingScore": {
+          "type": "number",
+          "description": "Given back to life score (0-54 Chandrika arch)."
+        },
+        "lightnessScore": {
+          "type": "number",
+          "description": "Lived lightly score (0-54 Kanth arch)."
+        },
+        "totalScore108": {
+          "type": "number",
+          "description": "Sum of giving and lightness scores (0-108 infinity balance)."
+        },
+        "date": {
+          "type": "string",
+          "maxLength": 10,
+          "description": "Date string YYYY-MM-DD."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last calculation."
+        }
+      },
+      "required": ["userId", "givingScore", "lightnessScore", "totalScore108", "date", "updatedAt"]
+    },
+    "ecoHabit": {
+      "title": "Eco Habit",
+      "description": "User sustainable habit tracking with streaks and impact.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Habit unique identifier."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Owner user UID."
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 120,
+          "description": "Title of the ecological habit."
+        },
+        "hindiTitle": {
+          "type": "string",
+          "maxLength": 120,
+          "description": "Hindi devanagari title."
+        },
+        "category": {
+          "type": "string",
+          "enum": ["sacred-flora", "soil-waste", "water", "energy", "creatures", "zero-waste"],
+          "description": "Habit category."
+        },
+        "frequency": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Cadence of habit."
+        },
+        "streak": {
+          "type": "number",
+          "description": "Current consecutive streak days."
+        },
+        "bestStreak": {
+          "type": "number",
+          "description": "All time best streak days."
+        },
+        "completedToday": {
+          "type": "boolean",
+          "description": "Whether habit was performed today."
+        },
+        "ecoImpact": {
+          "type": "string",
+          "maxLength": 250,
+          "description": "Ecological benefit description."
+        },
+        "pts": {
+          "type": "number",
+          "description": "Giving points contributed toward 54 arch."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Update timestamp."
+        }
+      },
+      "required": ["id", "userId", "title", "category", "streak", "completedToday", "pts", "updatedAt"]
+    },
+    "actLog": {
+      "title": "Life Act Log",
+      "description": "Record of a positive action given back to nature or low-carbon milestone.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Act unique identifier."
+        },
+        "userId": {
+          "type": "string",
+          "description": "User UID who performed act."
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 160,
+          "description": "Description of the positive act."
+        },
+        "pts": {
+          "type": "number",
+          "description": "Giving points value."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when logged."
+        }
+      },
+      "required": ["id", "userId", "name", "pts", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "userProfile",
+      "description": "Private user profile and system preferences."
+    },
+    "/users/{userId}/scores/{scoreId}": {
+      "schema": "ecoScore",
+      "description": "108 scoring metrics and history for user."
+    },
+    "/users/{userId}/habits/{habitId}": {
+      "schema": "ecoHabit",
+      "description": "Habit tracking records for user."
+    },
+    "/users/{userId}/acts/{actId}": {
+      "schema": "actLog",
+      "description": "Logged acts of giving back."
+    }
+  }
+}
