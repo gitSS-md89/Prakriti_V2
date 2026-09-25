@@ -2,5 +2,7 @@
   "name": "Prakriti",
   "description": "Prakriti ecological platform & Flutter mobile codebase for Android and iOS. Features 108 scoring, organic marketplace, community circles, multilingual voice assistant, and Gemini AI image creation & editing.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

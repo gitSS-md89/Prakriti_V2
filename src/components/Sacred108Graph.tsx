@@ -42,20 +42,24 @@ export const Sacred108Graph: React.FC<Sacred108GraphProps> = ({
   const path1to0Length = 160;
   const path1to0Offset = path1to0Length - (path1to0Length * Math.min(1, totalScore / 10));
 
-  const chandrikaGold = isKrishna ? '#FFB800' : '#C58F1B';
-  const kanthTeal = isKrishna ? '#00DFB6' : '#097770';
-  const emeraldPlume = isKrishna ? '#10B981' : '#1A5F44';
+  // Theme Colors per Sacred Specification:
+  // Krishna mode: Black, Purple, and Yellow
+  // Raadha mode: White, Green, Blue, Pink, and Light Green
+  const chandrikaGold = isKrishna ? '#FACC15' : '#EC4899'; // Krishna: Radiant Yellow; Raadha: Sacred Lotus Pink
+  const kanthTeal = isKrishna ? '#A855F7' : '#0284C7'; // Krishna: Sacred Purple; Raadha: Yamuna Blue
+  const emeraldPlume = isKrishna ? '#EAB308' : '#22C55E'; // Krishna: Sun Yellow; Raadha: Tender Light Green
+  const deepGreen = '#065F46'; // Raadha Deep Green
 
   return (
     <div
       className={`rounded-2xl border transition-all duration-300 ${
         compact
           ? isKrishna
-            ? 'bg-[#0D212E] border-[#1B3E52]'
-            : 'bg-white border-[#D2E3DB]'
+            ? 'bg-[#120826] border-[#3B1470]'
+            : 'bg-white border-[#A7F3D0]'
           : isKrishna
-          ? 'bg-gradient-to-br from-[#091D2A] via-[#0D2738] to-[#081824] border-[#1B3E52] shadow-[0_4px_30px_rgba(0,223,182,0.1)]'
-          : 'bg-gradient-to-br from-[#FFFFFF] via-[#F4F9F6] to-[#EDF5F1] border-[#D2E3DB] shadow-sm'
+          ? 'bg-gradient-to-br from-[#06020E] via-[#120826] to-[#1C0A38] border-[#3B1470] shadow-[0_4px_30px_rgba(168,85,247,0.18)]'
+          : 'bg-gradient-to-br from-[#FFFFFF] via-[#F0FDF4] to-[#FDF2F8] border-[#A7F3D0] shadow-sm'
       } ${compact ? 'p-3.5' : 'p-5'}`}
     >
       {/* Header Banner */}
@@ -63,7 +67,7 @@ export const Sacred108Graph: React.FC<Sacred108GraphProps> = ({
         <div className="flex items-center gap-2">
           <div
             className={`w-6 h-6 rounded-lg flex items-center justify-center ${
-              isKrishna ? 'bg-[#00DFB6]/20 text-[#00DFB6]' : 'bg-[#097770]/15 text-[#097770]'
+              isKrishna ? 'bg-[#A855F7]/25 text-[#FACC15]' : 'bg-[#EC4899]/15 text-[#EC4899]'
             }`}
           >
             <Sparkles className="w-3.5 h-3.5" />
@@ -78,14 +82,14 @@ export const Sacred108Graph: React.FC<Sacred108GraphProps> = ({
               <span
                 className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${
                   isKrishna
-                    ? 'bg-[#00DFB6]/15 text-[#00DFB6] border border-[#00DFB6]/30'
-                    : 'bg-[#097770]/10 text-[#097770] border border-[#097770]/20'
+                    ? 'bg-[#FACC15]/20 text-[#FACC15] border border-[#FACC15]/40'
+                    : 'bg-[#065F46]/10 text-[#065F46] border border-[#22C55E]/30'
                 }`}
               >
                 {totalScore}/108
               </span>
             </h3>
-            <p className={`text-[10px] ${isKrishna ? 'text-[#9BC3B9]' : 'text-[#6C837C]'}`}>
+            <p className={`text-[10px] ${isKrishna ? 'text-[#D8B4FE]' : 'text-[#065F46]'}`}>
               Starts at 1, expands to 0, weaves into ∞ (Infinity) with dual 54 arches
             </p>
           </div>
@@ -96,8 +100,8 @@ export const Sacred108Graph: React.FC<Sacred108GraphProps> = ({
             onClick={onOpenPrincipleModal}
             className={`flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg transition-all ${
               isKrishna
-                ? 'bg-[#00DFB6]/15 text-[#00DFB6] hover:bg-[#00DFB6]/25 border border-[#00DFB6]/30'
-                : 'bg-[#097770]/10 text-[#097770] hover:bg-[#097770]/20 border border-[#097770]/20'
+                ? 'bg-[#A855F7]/20 text-[#FACC15] hover:bg-[#A855F7]/30 border border-[#FACC15]/30'
+                : 'bg-[#FDF2F8] text-[#EC4899] hover:bg-[#FCE7F3] border border-[#F472B6]/30'
             }`}
             title="Read the deep sacred principle of 108"
           >
@@ -178,7 +182,7 @@ export const Sacred108Graph: React.FC<Sacred108GraphProps> = ({
             y1="90"
             x2="340"
             y2="90"
-            stroke={isKrishna ? '#1A3344' : '#DCEEE5'}
+            stroke={isKrishna ? '#3B1470' : '#A7F3D0'}
             strokeWidth="1"
             strokeDasharray="3 4"
             opacity="0.6"
@@ -189,7 +193,7 @@ export const Sacred108Graph: React.FC<Sacred108GraphProps> = ({
           <path
             d="M 32 90 C 70 50, 130 50, 180 90"
             fill="none"
-            stroke={isKrishna ? '#142A38' : '#E2EBE5'}
+            stroke={isKrishna ? '#26114A' : '#E2E8F0'}
             strokeWidth="3"
             strokeLinecap="round"
           />
@@ -207,7 +211,7 @@ export const Sacred108Graph: React.FC<Sacred108GraphProps> = ({
           />
 
           {/* TWO ARCHES: LEMNISCATE FIGURE 8 (INFINITY) */}
-          {/* LEFT ARCH: GIVING (Chandrika Gold - 54 max) */}
+          {/* LEFT ARCH: GIVING (Yellow in Krishna / Lotus Pink in Raadha) */}
           {/* Left Arch Path: Center(180,90) -> upper left -> outer left(55,90) -> lower left -> Center(180,90) */}
           {/* Filled Area */}
           <path
@@ -219,7 +223,7 @@ export const Sacred108Graph: React.FC<Sacred108GraphProps> = ({
           <path
             d="M 180 90 C 130 30, 60 30, 60 90 C 60 150, 130 150, 180 90 Z"
             fill="none"
-            stroke={isKrishna ? '#261F0A' : '#FDF4DF'}
+            stroke={isKrishna ? '#2A1F06' : '#FCE7F3'}
             strokeWidth="7"
             strokeLinecap="round"
           />
@@ -236,7 +240,7 @@ export const Sacred108Graph: React.FC<Sacred108GraphProps> = ({
             className="transition-all duration-700 ease-out"
           />
 
-          {/* RIGHT ARCH: LIGHTNESS (Mayur Kanth Teal - 54 max) */}
+          {/* RIGHT ARCH: LIGHTNESS (Purple in Krishna / Yamuna Blue in Raadha) */}
           {/* Right Arch Path: Center(180,90) -> upper right -> outer right(300,90) -> lower right -> Center(180,90) */}
           {/* Filled Area */}
           <path
@@ -248,7 +252,7 @@ export const Sacred108Graph: React.FC<Sacred108GraphProps> = ({
           <path
             d="M 180 90 C 230 30, 300 30, 300 90 C 300 150, 230 150, 180 90 Z"
             fill="none"
-            stroke={isKrishna ? '#082533' : '#DCF3E9'}
+            stroke={isKrishna ? '#240D4A' : '#E0F2FE'}
             strokeWidth="7"
             strokeLinecap="round"
           />
@@ -544,8 +548,8 @@ export const Sacred108Graph: React.FC<Sacred108GraphProps> = ({
           <div
             className={`absolute bottom-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-[10px] font-semibold backdrop-blur-md shadow-md border ${
               isKrishna
-                ? 'bg-[#07131B]/90 text-[#EEF9F6] border-[#00DFB6]/30'
-                : 'bg-white/95 text-[#0C1F1B] border-[#097770]/20'
+                ? 'bg-[#120826]/90 text-[#FAF5FF] border-[#FACC15]/40'
+                : 'bg-white/95 text-[#0F172A] border-[#065F46]/20'
             }`}
           >
             {hoveredSection === '1' && '1 (The Singularity): The individual soul (Atman) initiating righteous action.'}
@@ -562,17 +566,17 @@ export const Sacred108Graph: React.FC<Sacred108GraphProps> = ({
             <span
               className={`w-2 h-2 rounded-full ${
                 totalScore >= 108
-                  ? 'bg-[#10B981] animate-ping'
+                  ? 'bg-[#FACC15] animate-ping'
                   : isKrishna
-                  ? 'bg-[#00DFB6]'
-                  : 'bg-[#097770]'
+                  ? 'bg-[#FACC15]'
+                  : 'bg-[#22C55E]'
               }`}
             />
-            <span className={isKrishna ? 'text-[#EEF9F6]' : 'text-[#0C1F1B]'}>
+            <span className={isKrishna ? 'text-[#FAF5FF]' : 'text-[#0F172A]'}>
               108 Sacred Balance Progression: {totalPercent.toFixed(0)}%
             </span>
           </span>
-          <span className={isKrishna ? 'text-[#9BC3B9]' : 'text-[#6C837C]'}>
+          <span className={isKrishna ? 'text-[#D8B4FE]' : 'text-[#065F46]'}>
             {totalScore >= 108 ? '★ Cosmic Lemniscate Realized' : `${108 - totalScore} pts to complete`}
           </span>
         </div>
@@ -580,7 +584,7 @@ export const Sacred108Graph: React.FC<Sacred108GraphProps> = ({
         {/* Segmented Dual Bar */}
         <div
           className={`h-2.5 w-full rounded-full overflow-hidden flex border p-0.5 ${
-            isKrishna ? 'bg-[#07131B] border-[#1B3E52]' : 'bg-[#E7F2EC] border-[#D2E3DB]'
+            isKrishna ? 'bg-[#06020E] border-[#3B1470]' : 'bg-[#F0FDF4] border-[#A7F3D0]'
           }`}
         >
           {/* Giving segment (Chandrika) */}
@@ -611,15 +615,15 @@ export const Sacred108Graph: React.FC<Sacred108GraphProps> = ({
             {/* Giving Control */}
             <div
               className={`p-2 rounded-xl border flex items-center justify-between ${
-                isKrishna ? 'bg-[#142C3C] border-[#1B3E52]' : 'bg-white border-[#D2E3DB]'
+                isKrishna ? 'bg-[#120826] border-[#3B1470]' : 'bg-white border-[#A7F3D0]'
               }`}
             >
               <div>
                 <span className="font-bold block" style={{ color: chandrikaGold }}>
                   Giving Arch
                 </span>
-                <span className={`text-[10px] ${isKrishna ? 'text-[#9BC3B9]' : 'text-[#6C837C]'}`}>
-                  {givingScore}/54 (Chandrika)
+                <span className={`text-[10px] ${isKrishna ? 'text-[#D8B4FE]' : 'text-[#64748B]'}`}>
+                  {givingScore}/54 {isKrishna ? '(Yellow)' : '(Lotus Pink)'}
                 </span>
               </div>
               <div className="flex items-center gap-1">
@@ -628,7 +632,7 @@ export const Sacred108Graph: React.FC<Sacred108GraphProps> = ({
                     <button
                       onClick={() => onUpdateGiving(Math.max(0, givingScore - 2))}
                       className={`w-6 h-6 rounded flex items-center justify-center font-bold text-xs ${
-                        isKrishna ? 'bg-[#07131B] hover:bg-[#1A384C] text-[#EEF9F6]' : 'bg-[#EDF5F1] hover:bg-[#D2E3DB] text-[#0C1F1B]'
+                        isKrishna ? 'bg-[#06020E] hover:bg-[#200D42] text-[#FAF5FF]' : 'bg-[#FDF2F8] hover:bg-[#FCE7F3] text-[#0F172A]'
                       }`}
                     >
                       -
@@ -636,7 +640,7 @@ export const Sacred108Graph: React.FC<Sacred108GraphProps> = ({
                     <button
                       onClick={() => onUpdateGiving(Math.min(54, givingScore + 2))}
                       className={`w-6 h-6 rounded flex items-center justify-center font-bold text-xs ${
-                        isKrishna ? 'bg-[#FFB800] text-[#07131B]' : 'bg-[#C58F1B] text-white'
+                        isKrishna ? 'bg-[#FACC15] text-[#06020E]' : 'bg-[#EC4899] text-white'
                       }`}
                     >
                       +
@@ -649,15 +653,15 @@ export const Sacred108Graph: React.FC<Sacred108GraphProps> = ({
             {/* Lightness Control */}
             <div
               className={`p-2 rounded-xl border flex items-center justify-between ${
-                isKrishna ? 'bg-[#142C3C] border-[#1B3E52]' : 'bg-white border-[#D2E3DB]'
+                isKrishna ? 'bg-[#120826] border-[#3B1470]' : 'bg-white border-[#A7F3D0]'
               }`}
             >
               <div>
                 <span className="font-bold block" style={{ color: kanthTeal }}>
                   Lightness Arch
                 </span>
-                <span className={`text-[10px] ${isKrishna ? 'text-[#9BC3B9]' : 'text-[#6C837C]'}`}>
-                  {lightnessScore}/54 (Kanth)
+                <span className={`text-[10px] ${isKrishna ? 'text-[#D8B4FE]' : 'text-[#64748B]'}`}>
+                  {lightnessScore}/54 {isKrishna ? '(Purple)' : '(Yamuna Blue)'}
                 </span>
               </div>
               <div className="flex items-center gap-1">
@@ -666,7 +670,7 @@ export const Sacred108Graph: React.FC<Sacred108GraphProps> = ({
                     <button
                       onClick={() => onUpdateLightness(Math.max(0, lightnessScore - 2))}
                       className={`w-6 h-6 rounded flex items-center justify-center font-bold text-xs ${
-                        isKrishna ? 'bg-[#07131B] hover:bg-[#1A384C] text-[#EEF9F6]' : 'bg-[#EDF5F1] hover:bg-[#D2E3DB] text-[#0C1F1B]'
+                        isKrishna ? 'bg-[#06020E] hover:bg-[#200D42] text-[#FAF5FF]' : 'bg-[#F0F9FF] hover:bg-[#E0F2FE] text-[#0F172A]'
                       }`}
                     >
                       -
@@ -674,7 +678,7 @@ export const Sacred108Graph: React.FC<Sacred108GraphProps> = ({
                     <button
                       onClick={() => onUpdateLightness(Math.min(54, lightnessScore + 2))}
                       className={`w-6 h-6 rounded flex items-center justify-center font-bold text-xs ${
-                        isKrishna ? 'bg-[#00DFB6] text-[#07131B]' : 'bg-[#097770] text-white'
+                        isKrishna ? 'bg-[#A855F7] text-white' : 'bg-[#0284C7] text-white'
                       }`}
                     >
                       +
